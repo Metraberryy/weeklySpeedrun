@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Reflection;
+using WeeklyIL.Utility;
 
 namespace WeeklyIL.Services;
 
@@ -48,13 +49,26 @@ public class InteractionHandlingService : IHostedService
 
     private async Task OnInteractionAsync(SocketInteraction interaction)
     {
+        if (interaction.IsDMInteraction)
+        {
+            await interaction.RespondAsync("nuh uh");
+            return;
+        }
         try
         {
-            var context = new SocketInteractionContext(_discord, interaction);
-            var result = await _interactions.ExecuteCommandAsync(context, _services);
-
-            if (!result.IsSuccess)
-                await context.Channel.SendMessageAsync(result.ToString());
+            IResult? result;
+            if (interaction is SocketMessageComponent component)
+            {
+                var context = new SocketInteractionContext<SocketMessageComponent>(_discord, component);
+                result = await _interactions.ExecuteCommandAsync(context, _services);
+            }
+            else
+            {
+                var context = new SocketInteractionContext(_discord, interaction);
+                result = await _interactions.ExecuteCommandAsync(context, _services);
+            }
+            
+            if (!result.IsSuccess) await interaction.RespondAsync(result.ToString(), ephemeral: true);
         }
         catch
         {
