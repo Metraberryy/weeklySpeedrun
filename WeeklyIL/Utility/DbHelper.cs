@@ -1,4 +1,5 @@
-﻿using Discord.Interactions;
+﻿using Discord;
+using Discord.Interactions;
 using Discord.WebSocket;
 using WeeklyIL.Database;
 
@@ -6,36 +7,161 @@ namespace WeeklyIL.Utility;
 
 public static class DbHelper
 {
-    public static async Task CreateIfNotExists(this WilDbContext dbContext, SocketGuild guild)
+    public static async Task CreateGuildIfNotExists(this WilDbContext dbContext, ulong id)
     {
-        if (dbContext.Guilds.Any(g => g.Id == guild.Id))
+        if (dbContext.Guilds.Any(g => g.Id == id))
         {
             return;
         }
 
         await dbContext.Guilds.AddAsync(new GuildEntity
         {
-            Id = guild.Id
+            Id = id
         });
         
         await dbContext.SaveChangesAsync();
     }
     
-    public static WeekEntity? CurrentWeek(this WilDbContext dbContext, SocketGuild guild) =>
+    public static async Task CreateUserIfNotExists(this WilDbContext dbContext, ulong id)
+    {
+        if (dbContext.Users.Any(g => g.Id == id))
+        {
+            return;
+        }
+
+        await dbContext.Users.AddAsync(new UserEntity
+        {
+            Id = id
+        });
+        
+        await dbContext.SaveChangesAsync();
+    }
+    
+    public static WeekEntity? CurrentWeek(this WilDbContext dbContext, ulong guild) =>
         dbContext.Weeks
-            .Where(w => w.GuildId == guild.Id).AsEnumerable()
+            .Where(w => w.GuildId == guild).AsEnumerable()
             .Where(w => w.StartTimestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
             .OrderByDescending(w => w.StartTimestamp).FirstOrDefault();
     
-    public static async Task<bool> UserIsOrganizer(this WilDbContext dbContext, SocketInteractionContext iContext)
+    public static WeekEntity? NextWeek(this WilDbContext dbContext, ulong guild) =>
+        dbContext.Weeks
+            .Where(w => w.GuildId == guild).AsEnumerable()
+            .Where(w => w.StartTimestamp > DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+            .OrderBy(w => w.StartTimestamp).FirstOrDefault();
+    
+    public static async Task<bool> UserIsOrganizer(this WilDbContext dbContext, SocketInteractionContext context)
     {
-        await dbContext.CreateIfNotExists(iContext.Guild);
+        await dbContext.CreateGuildIfNotExists(context.Guild.Id);
         
-        GuildEntity g = dbContext.Guilds.First(g => g.Id == iContext.Guild.Id);
+        GuildEntity g = dbContext.Guild(context.Guild.Id);
         
-        return iContext.User is SocketGuildUser user
+        return context.User is SocketGuildUser user
                && user.Roles.Any(r =>
                    r.Id == g.OrganizerRole
                    || r.Id == g.ModeratorRole);
+    }
+
+    public static GuildEntity Guild(this WilDbContext dbContext, ulong id)
+    {
+        return dbContext.Guilds.Find(id)!;
+    }
+    
+    public static MonthEntity Month(this WilDbContext dbContext, ulong id)
+    {
+        return dbContext.Months.Find(id)!;
+    }
+    
+    public static WeekEntity Week(this WilDbContext dbContext, ulong id)
+    {
+        return dbContext.Weeks.Find(id)!;
+    }
+    
+    public static UserEntity User(this WilDbContext dbContext, ulong id)
+    {
+        return dbContext.Users.Find(id)!;
+    }
+    
+    public static EmbedBuilder LeaderboardBuilder(this WilDbContext dbContext, DiscordSocketClient client, WeekEntity week, bool forceVideo)
+    {
+        string board = string.Empty;
+        int place = 1;
+        foreach (ScoreEntity score in dbContext.Scores
+                     .Where(s => s.WeekId == week.Id) // 
+                     .Where(s => s.Verified)
+                     .GroupBy(s => s.UserId)
+                     .Select(g => g.OrderBy(s => s.TimeMs).First()))
+        {
+            string name = client.GetUser(score.UserId).Username;
+            
+            if (score.Video == null)
+            {
+                board += $":heavy_multiplication_x: - `??:??.???` - {name}\n";
+                continue;
+            }
+            
+            board += place switch
+            {
+                1 => ":first_place:",
+                2 => ":second_place:",
+                3 => ":third_place:",
+                _ => ":checkered_flag:"
+            };
+            var ts = new TimeSpan((long)score.TimeMs * TimeSpan.TicksPerMillisecond);
+            board += $@" - `{ts:mm\:ss\.fff}` - ";
+            board += forceVideo || week.ShowVideo ? $"[{name}]({score.Video})\n" : $"{name}";
+            place++;
+        }
+
+        return new EmbedBuilder()
+            .WithTitle($"{week.Level}")
+            .WithDescription(board)
+            .WithFooter($"ID: {week.Id}");
+    }
+    
+    public static EmbedBuilder LeaderboardBuilder(this WilDbContext dbContext, DiscordSocketClient client, MonthEntity month)
+    {
+        string board = string.Empty;
+        int place = 1;
+
+        var weeks = dbContext.Weeks.Where(w => w.MonthId == month.Id); // get weeks in month
+        
+        foreach (var score in weeks
+                     .SelectMany(w => dbContext.Scores.Where(s => s.WeekId == w.Id)) // get scores from every week
+                     .Where(s => s.Verified) // keep verified runs
+                     .Where(s => s.Video != null) // keep scores with video
+                     .GroupBy(s => s.UserId).AsEnumerable() // group scores by user id
+                     .Where(g => g.Select(s => s.WeekId).Distinct().Count() == weeks.Count()) // keep runs from users who have a video on each week
+                     .Select(g => new
+                     {
+                         UserId = g.Key,
+                         TimeMs = g
+                             .GroupBy(s => s.WeekId) // group user's scores by week id
+                             .Select(std => std.OrderBy(s => s.TimeMs).First().TimeMs) // get the best for each week
+                             .Aggregate(0U, (total, time) => total + (uint)time) // combine best times
+                     })
+                     .OrderBy(result => result.TimeMs)) // order by time
+        {
+            string name = client.GetUser(score.UserId).Username;
+            
+            board += place switch
+            {
+                1 => ":first_place:",
+                2 => ":second_place:",
+                3 => ":third_place:",
+                _ => ":checkered_flag:"
+            };
+            var ts = new TimeSpan(score.TimeMs * TimeSpan.TicksPerMillisecond);
+            board += $@" - `{ts:h\:mm\:ss\.fff}` - {name}";
+            place++;
+        }
+
+        string title = month.RoleId == null
+            ? $"Month {month.Id}"
+            : $"{client.GetGuild(month.GuildId).GetRole((ulong)month.RoleId).Name} month";
+
+        return new EmbedBuilder()
+            .WithTitle(title)
+            .WithDescription(board)
+            .WithFooter($"ID: {month.Id}; Weeks: {string.Join(", ", weeks.Select(w => w.Id))}");
     }
 }

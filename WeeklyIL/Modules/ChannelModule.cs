@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
 using WeeklyIL.Database;
 using WeeklyIL.Utility;
 
@@ -11,26 +12,32 @@ public class ChannelModule : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly WilDbContext _dbContext;
 
-    public ChannelModule(WilDbContext dbContext)
+    public ChannelModule(IDbContextFactory<WilDbContext> contextFactory)
     {
-        _dbContext = dbContext;
+        _dbContext = contextFactory.CreateDbContext();
     }
     
     [SlashCommand("submissions", "Sets the channel that submissions go to")]
-    [RequireUserPermission(GuildPermission.Administrator)]
-    public async Task SetSubmissionChannel(SocketGuildChannel channel)
+    [RequireUserPermission(GuildPermission.ManageChannels)]
+    public async Task SetSubmissionChannel(SocketTextChannel channel)
     {
-        await _dbContext.CreateIfNotExists(Context.Guild);
-
-        if (channel.GetChannelType() != ChannelType.Text)
-        {
-            await RespondAsync($"<#{channel.Id}> isn't a text channel!", ephemeral: true);
-            return;
-        }
+        await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
         
-        _dbContext.Guilds.First(g => g.Id == Context.Guild.Id).SubmissionsChannel = channel.Id;
+        _dbContext.Guild(Context.Guild.Id).SubmissionsChannel = channel.Id;
         await _dbContext.SaveChangesAsync();
         
         await RespondAsync($"Successfully set submissions channel to <#{channel.Id}>!", ephemeral: true);
+    }
+    
+    [SlashCommand("announcements", "Sets the channel that announcements go to")]
+    [RequireUserPermission(GuildPermission.ManageChannels)]
+    public async Task SetAnnounceChannel(SocketTextChannel channel)
+    {
+        await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
+        
+        _dbContext.Guild(Context.Guild.Id).AnnouncementsChannel = channel.Id;
+        await _dbContext.SaveChangesAsync();
+        
+        await RespondAsync($"Successfully set announcements channel to <#{channel.Id}>!", ephemeral: true);
     }
 }

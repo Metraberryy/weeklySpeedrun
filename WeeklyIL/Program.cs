@@ -15,9 +15,11 @@ using IHost host = Host.CreateDefaultBuilder(args)
     })
     .ConfigureServices(services => // add services
     {
-        services.AddDbContext<WilDbContext>();
+        services.AddDbContextFactory<WilDbContext>();
         services.AddSingleton<DiscordSocketClient>();
         services.AddSingleton<InteractionService>();
+        services.AddSingleton<WeekEndTimers>();
+        services.AddHostedService<WeekEndService>();
         services.AddHostedService<InteractionHandlingService>();
         services.AddHostedService<DiscordStartupService>();
     })

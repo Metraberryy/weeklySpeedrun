@@ -2,6 +2,7 @@
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
 using WeeklyIL.Database;
 using WeeklyIL.Utility;
 
@@ -13,16 +14,16 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
     private readonly WilDbContext _dbContext;
     private readonly DiscordSocketClient _client;
 
-    public SubmitModule(WilDbContext dbContext, DiscordSocketClient client)
+    public SubmitModule(IDbContextFactory<WilDbContext> contextFactory, DiscordSocketClient client)
     {
-        _dbContext = dbContext;
+        _dbContext = contextFactory.CreateDbContext();
         _client = client;
     }
     
     [SlashCommand("video", "Submits a time with video proof")]
     public async Task WithVideo(string video, ulong? week = null)
     {
-        await _dbContext.CreateIfNotExists(Context.Guild);
+        await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
         ulong subChannel = _dbContext.Guilds.First(g => g.Id == Context.Guild.Id).SubmissionsChannel;
         if (subChannel == 0)
         {
@@ -30,8 +31,12 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        ulong? weekId = week ?? _dbContext.CurrentWeek(Context.Guild)?.Id;
-        if (weekId == null || !_dbContext.Weeks.Where(w => w.GuildId == Context.Guild.Id).Any(w => w.Id == weekId))
+        ulong weekId = week ?? _dbContext.CurrentWeek(Context.Guild.Id)?.Id ?? 0;
+        WeekEntity? we = _dbContext.Weeks
+            .Where(w => w.GuildId == Context.Guild.Id)
+            .FirstOrDefault(w => w.Id == weekId);
+        
+        if (we == null || we.StartTimestamp > DateTimeOffset.UtcNow.ToUnixTimeSeconds())
         {
             await RespondAsync("No week to submit to!", ephemeral: true);
             return;
@@ -47,22 +52,22 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
         await _dbContext.Scores.AddAsync(new ScoreEntity
         {
             UserId = Context.User.Id,
-            WeekId = (ulong)weekId,
+            WeekId = weekId,
             Video = video
         });
         await _dbContext.SaveChangesAsync();
         
         ulong id = _dbContext.Scores
             .Where(s => s.UserId == Context.User.Id)
-            .Where(s => s.WeekId == (ulong)weekId)
+            .Where(s => s.WeekId == weekId)
             .First(s => s.Video == video).Id;
 
         var cb = new ComponentBuilder()
             .WithButton("Verify", "verify_button", ButtonStyle.Success)
             .WithButton("Reject", "reject_button", ButtonStyle.Danger);
 
-        var channel = (ISocketMessageChannel)await _client.GetChannelAsync(subChannel);
-        await channel.SendMessageAsync($"ID: {id} Video: {video}", components: cb.Build());
+        var channel = (SocketTextChannel)await _client.GetChannelAsync(subChannel);
+        await channel.SendMessageAsync($"ID: {id} | User: {Context.User.Username} | Week: {weekId} \nVideo: {video}", components: cb.Build());
         
         await RespondAsync("Video submitted! It will be timed and verified soon.", ephemeral: true);
     }
@@ -70,8 +75,14 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
     [SlashCommand("blank", "your did it")]
     public async Task NoVideo(ulong? week = null)
     {
-        ulong? weekId = week ?? _dbContext.CurrentWeek(Context.Guild)?.Id;
-        if (weekId == null || !_dbContext.Weeks.Where(w => w.GuildId == Context.Guild.Id).Any(w => w.Id == weekId))
+        ulong weekId = week ?? _dbContext.CurrentWeek(Context.Guild.Id)?.Id ?? 0;
+        WeekEntity? we = _dbContext.Weeks
+            .Where(w => w.GuildId == Context.Guild.Id)
+            .FirstOrDefault(w => w.Id == weekId);
+        
+        if (we == null
+            || (we.StartTimestamp > DateTimeOffset.UtcNow.ToUnixTimeSeconds() 
+                && !await _dbContext.UserIsOrganizer(Context)))
         {
             await RespondAsync("No week to submit to!", ephemeral: true);
             return;
@@ -80,7 +91,7 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
         await _dbContext.Scores.AddAsync(new ScoreEntity
         {
             UserId = Context.User.Id,
-            WeekId = (ulong)weekId,
+            WeekId = weekId,
             TimeMs = uint.MaxValue,
             Verified = true
         });
@@ -88,7 +99,5 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
         
         await RespondAsync("Submitted without proof! You'll show up on the leaderboard without a time.", ephemeral: true);
     }
-    
-    
 }
 

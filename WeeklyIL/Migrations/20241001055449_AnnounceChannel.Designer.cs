@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WeeklyIL.Database;
 
@@ -10,34 +11,14 @@ using WeeklyIL.Database;
 namespace WeeklyIL.Migrations
 {
     [DbContext(typeof(WilDbContext))]
-    partial class WilDbContextModelSnapshot : ModelSnapshot
+    [Migration("20241001055449_AnnounceChannel")]
+    partial class AnnounceChannel
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.8");
-
-            modelBuilder.Entity("WeeklyIL.Database.AchievementRole", b =>
-                {
-                    b.Property<ulong>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<ulong?>("GuildEntityId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<uint>("Requirement")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<ulong>("RoleId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GuildEntityId");
-
-                    b.ToTable("AchievementRole");
-                });
 
             modelBuilder.Entity("WeeklyIL.Database.GuildEntity", b =>
                 {
@@ -60,23 +41,6 @@ namespace WeeklyIL.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Guilds");
-                });
-
-            modelBuilder.Entity("WeeklyIL.Database.MonthEntity", b =>
-                {
-                    b.Property<ulong>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<ulong>("GuildId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<ulong?>("RoleId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Months");
                 });
 
             modelBuilder.Entity("WeeklyIL.Database.ScoreEntity", b =>
@@ -111,9 +75,6 @@ namespace WeeklyIL.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<uint>("MonthlyWins")
-                        .HasColumnType("INTEGER");
-
                     b.Property<uint>("WeeklyWins")
                         .HasColumnType("INTEGER");
 
@@ -128,9 +89,6 @@ namespace WeeklyIL.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("Ended")
-                        .HasColumnType("INTEGER");
-
                     b.Property<ulong>("GuildId")
                         .HasColumnType("INTEGER");
 
@@ -138,30 +96,12 @@ namespace WeeklyIL.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<ulong?>("MonthId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("ShowVideo")
-                        .HasColumnType("INTEGER");
-
                     b.Property<uint>("StartTimestamp")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
                     b.ToTable("Weeks");
-                });
-
-            modelBuilder.Entity("WeeklyIL.Database.AchievementRole", b =>
-                {
-                    b.HasOne("WeeklyIL.Database.GuildEntity", null)
-                        .WithMany("WeeklyRoles")
-                        .HasForeignKey("GuildEntityId");
-                });
-
-            modelBuilder.Entity("WeeklyIL.Database.GuildEntity", b =>
-                {
-                    b.Navigation("WeeklyRoles");
                 });
 #pragma warning restore 612, 618
         }

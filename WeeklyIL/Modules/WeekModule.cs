@@ -1,21 +1,25 @@
 ﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
 using WeeklyIL.Database;
+using WeeklyIL.Services;
 using WeeklyIL.Utility;
 
 namespace WeeklyIL.Modules;
 
-[Group("weeks", "Commands for managing weeks")]
+[Group("week", "Commands for managing weeks")]
 public class WeekModule : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly WilDbContext _dbContext;
     private readonly DiscordSocketClient _client;
+    private readonly WeekEndTimers _weekEnder;
 
-    public WeekModule(WilDbContext dbContext, DiscordSocketClient client)
+    public WeekModule(IDbContextFactory<WilDbContext> contextFactory, DiscordSocketClient client, WeekEndTimers weekEnder)
     {
-        _dbContext = dbContext;
+        _dbContext = contextFactory.CreateDbContext();
         _client = client;
+        _weekEnder = weekEnder;
     }
 
     private async Task<bool> PermissionsFail()
@@ -27,44 +31,6 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
 
         await RespondAsync("You can't do that here!", ephemeral: true);
         return true;
-    }
-
-    [SlashCommand("queue", "Shows the queue of upcoming weeks")]
-    public async Task WeeksQueue()
-    {
-        if (await PermissionsFail())
-        {
-            return;
-        }
-
-        var eb = new EmbedBuilder().WithTitle("Upcoming weeks");
-        foreach (WeekEntity week in _dbContext.Weeks
-                     .Where(w => w.GuildId == Context.Guild.Id).AsEnumerable()
-                     .Where(w => w.StartTimestamp > DateTimeOffset.UtcNow.ToUnixTimeSeconds())
-                     .OrderBy(w => w.StartTimestamp))
-        {
-            eb.AddField($"<t:{week.StartTimestamp}:D>", week.Level);
-        }
-        await RespondAsync(embed: eb.Build(), ephemeral: true);
-    }
-    
-    [SlashCommand("past", "Shows previous weeks")]
-    public async Task PastWeeks()
-    {
-        if (await PermissionsFail())
-        {
-            return;
-        }
-
-        var eb = new EmbedBuilder().WithTitle("Previous weeks");
-        foreach (WeekEntity week in _dbContext.Weeks
-                     .Where(w => w.GuildId == Context.Guild.Id).AsEnumerable()
-                     .Where(w => w.StartTimestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
-                     .OrderByDescending(w => w.StartTimestamp))
-        {
-            eb.AddField($"<t:{week.StartTimestamp}:D>", week.Level);
-        }
-        await RespondAsync(embed: eb.Build(), ephemeral: true);
     }
     
     [SlashCommand("new", "Create a new week and add it to the queue")]
@@ -87,15 +53,19 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
     
     public class FirstWeekModal : IModal
     {
-        public string Title => "First-time setup";
+        public string Title => "First week";
         
         [InputLabel("Start of the first week as a unix timestamp")]
-        [ModalTextInput("timestamp", TextInputStyle.Short, "1727601767")]
+        [ModalTextInput("timestamp", placeholder: "1727601767")]
         public uint Timestamp { get; set; }
         
         [InputLabel("What are we running?")]
-        [ModalTextInput("level_name", TextInputStyle.Short, "https://beacon.lbpunion.com/slot/17962/getting-over-it-14-players")]
+        [ModalTextInput("level_name", placeholder: "https://beacon.lbpunion.com/slot/17962/getting-over-it-14-players")]
         public string Level { get; set; }
+        
+        [InputLabel("Show videos before the week is over?")]
+        [ModalTextInput("show_video", placeholder: "0/1")]
+        public string ShowVideo { get; set; }
     }
     [ModalInteraction("first_week", true)]
     public async Task FirstWeekResponse(FirstWeekModal modal)
@@ -106,7 +76,7 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
         
-        await CreateWeek(modal.Timestamp, modal.Level);
+        await CreateWeek(modal.Timestamp, modal.Level, bool.Parse(modal.ShowVideo));
     }
 
     public class NewWeekModal : IModal
@@ -114,62 +84,101 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
         public string Title => "New week";
         
         [InputLabel("What are we running?")]
-        [ModalTextInput("level_name", TextInputStyle.Short, "https://beacon.lbpunion.com/slot/17962/getting-over-it-14-players")]
+        [ModalTextInput("level_name", placeholder: "https://beacon.lbpunion.com/slot/17962/getting-over-it-14-players")]
         public string Level { get; set; }
+        
+        [InputLabel("Show videos before the week is over?")]
+        [ModalTextInput("show_video", placeholder: "0/1")]
+        public string ShowVideo { get; set; }
     }
     [ModalInteraction("new_week", true)]
     public async Task NewWeekResponse(NewWeekModal modal)
     {
         uint time = _dbContext.Weeks.OrderByDescending(w => w.StartTimestamp).First(w => w.GuildId == Context.Guild.Id).StartTimestamp + 604800;
-        await CreateWeek(time, modal.Level);
+        await CreateWeek(time, modal.Level, bool.Parse(modal.ShowVideo));
     }
 
-    private async Task CreateWeek(uint time, string level)
+    private async Task CreateWeek(uint time, string level, bool showVideo)
     {
-        await _dbContext.AddAsync(new WeekEntity
+        var entry = await _dbContext.AddAsync(new WeekEntity
         {
             GuildId = Context.Guild.Id,
             StartTimestamp = time,
-            Level = level
+            Level = level,
+            ShowVideo = showVideo
         });
         await _dbContext.SaveChangesAsync();
-        ulong id = _dbContext.Weeks.First(w => w.StartTimestamp == time && w.GuildId == Context.Guild.Id).Id;
+
+        // update timer in case this is the next week
+        await _weekEnder.UpdateGuildTimer(Context.Guild.Id);
         
         await RespondAsync(
-            $"Week created on <t:{time}:f>! `id: {id}`\n" +
-            $"If you need to edit this time, you can change it with `/weeks time {id} <unix timestamp>`",
+            $"Week created on <t:{time}:f>! `id: {entry.Entity.Id}`\n" +
+            $"You can edit this with `/week edit {entry.Entity.Id}`.",
             ephemeral: true);
     }
     
-    [SlashCommand("time", "Sets the time of a week by id")]
-    public async Task SetTime(ulong id, uint timestamp)
+    [SlashCommand("edit", "Edit a week by id")]
+    public async Task EditWeek(ulong id)
     {
         if (await PermissionsFail())
         {
             return;
         }
-        
-        WeekEntity? week = _dbContext.Weeks.FirstOrDefault(w => w.Id == id);
-        if (week == null || week.GuildId != Context.Guild.Id)
-        {
-            await RespondAsync(
-                $"No week found with id `{id}`.",
-                ephemeral: true);
-            return;
-        }
-        if (timestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
-        {
-            await RespondAsync(
-                $"<t:{timestamp}:f> is before the current time!",
-                ephemeral: true);
-            return;
-        }
 
-        week.StartTimestamp = timestamp;
-        await _dbContext.SaveChangesAsync();
+        WeekEntity? week = _dbContext.Weeks
+            .Where(w => w.GuildId == Context.Guild.Id)
+            .FirstOrDefault(w => w.Id == id);
         
-        await RespondAsync(
-            $"Week `{id}` will now be on <t:{timestamp}:f>.",
-            ephemeral: true);
+        if (week == null)
+        {
+            await RespondAsync("Week doesn't exist!");
+            return;
+        }
+        
+        // using a modalbuilder here to automatically set the current things
+        var mb = new ModalBuilder()
+            .WithCustomId("edit_week")
+            .WithTitle("Edit week")
+            .AddTextInput("Start of the week as a unix timestamp", "timestamp", placeholder: "1727601767", value: week.StartTimestamp.ToString())
+            .AddTextInput("What are we running?", "level_name", placeholder: "https://beacon.lbpunion.com/slot/17962/getting-over-it-14-players", value: week.Level)
+            .AddTextInput("Show videos before the week is over?", "show_video", placeholder: "0/1", value: week.ShowVideo.ToString())
+            .AddTextInput("ID", "week_id", value: id.ToString());
+
+        await RespondWithModalAsync(mb.Build());
+    }
+    
+    public class EditWeekModal : IModal
+    {
+        public string Title => "Edit week";
+        
+        [ModalTextInput("timestamp")]
+        public uint Timestamp { get; set; }
+        
+        [ModalTextInput("level_name")]
+        public string Level { get; set; }
+        
+        [ModalTextInput("week_id")]
+        public ulong WeekId { get; set; }
+        
+        [ModalTextInput("show_video")]
+        public string ShowVideo { get; set; }
+    }
+    [ModalInteraction("edit_week", true)]
+    public async Task EditWeekResponse(EditWeekModal modal)
+    {
+        WeekEntity week = (await _dbContext.Weeks.FindAsync(modal.WeekId))!;
+        if (week.GuildId != Context.Guild.Id) return;
+        
+        _dbContext.Weeks.Update(week);
+        week.StartTimestamp = modal.Timestamp;
+        week.Level = modal.Level;
+        week.ShowVideo = bool.Parse(modal.ShowVideo);
+        
+        await _dbContext.SaveChangesAsync();
+
+        await _weekEnder.UpdateGuildTimer(Context.Guild.Id);
+
+        await RespondAsync($"Successfully edited week {modal.WeekId}!", ephemeral: true);
     }
 }

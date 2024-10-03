@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
 using WeeklyIL.Database;
 using WeeklyIL.Utility;
 
@@ -11,32 +12,86 @@ public class RoleModule : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly WilDbContext _dbContext;
 
-    public RoleModule(WilDbContext dbContext)
+    public RoleModule(IDbContextFactory<WilDbContext> contextFactory)
     {
-        _dbContext = dbContext;
+        _dbContext = contextFactory.CreateDbContext();
     }
     
     [SlashCommand("moderator", "Sets the moderator permissions role")]
-    [RequireUserPermission(GuildPermission.Administrator)]
+    [RequireUserPermission(GuildPermission.ManageRoles)]
     public async Task SetModRole(SocketRole role)
     {
-        await _dbContext.CreateIfNotExists(Context.Guild);
+        await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
         
-        _dbContext.Guilds.First(g => g.Id == Context.Guild.Id).ModeratorRole = role.Id;
+        _dbContext.Guild(Context.Guild.Id).ModeratorRole = role.Id;
         await _dbContext.SaveChangesAsync();
         
         await RespondAsync($"Successfully set moderator role to {role.Mention}!", ephemeral: true);
     }
     
     [SlashCommand("organizer", "Sets the organizer permissions role")]
-    [RequireUserPermission(GuildPermission.Administrator)]
+    [RequireUserPermission(GuildPermission.ManageRoles)]
     public async Task SetOrgRole(SocketRole role)
     {
-        await _dbContext.CreateIfNotExists(Context.Guild);
+        await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
         
-        _dbContext.Guilds.First(g => g.Id == Context.Guild.Id).OrganizerRole = role.Id;
+        _dbContext.Guild(Context.Guild.Id).OrganizerRole = role.Id;
         await _dbContext.SaveChangesAsync();
         
         await RespondAsync($"Successfully set organizer role to {role.Mention}!", ephemeral: true);
+    }
+    
+    [SlashCommand("weekly", "Sets a role for a certain number of weekly WRs")]
+    [RequireUserPermission(GuildPermission.ManageRoles)]
+    public async Task SetWeeklyRole(int requirement, SocketRole role)
+    {
+        await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
+
+        if (requirement < 1)
+        {
+            await RespondAsync($"Requirement cannot be less than 1.", ephemeral: true);
+            return;
+        }
+        
+        GuildEntity guild = _dbContext.Guilds
+            .Include(g => g.WeeklyRoles)
+            .First(g => g.Id == Context.Guild.Id);
+        AchievementRole? ar = guild.WeeklyRoles.FirstOrDefault(r => r.Requirement == requirement || r.RoleId == role.Id);
+        if (ar == null)
+        {
+            guild.WeeklyRoles.Add(new AchievementRole { Requirement = (uint)requirement, RoleId = role.Id });
+        }
+        else
+        {
+            ar.Requirement = (uint)requirement;
+            ar.RoleId = role.Id;
+        }
+
+        await _dbContext.SaveChangesAsync();
+
+        string word = requirement > 1 ? "weeklies" : "weekly";
+        await RespondAsync($"Successfully set \"{requirement} {word}\" role to {role.Mention}!", ephemeral: true);
+    }
+    
+    [SlashCommand("monthly", "Sets a role to be awarded to the WR holder of a month by id")]
+    [RequireUserPermission(GuildPermission.ManageRoles)]
+    public async Task SetMonthlyRole(ulong id, SocketRole role)
+    {
+        await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
+
+        MonthEntity? month = _dbContext.Months
+            .Where(w => w.GuildId == Context.Guild.Id)
+            .FirstOrDefault(w => w.Id == id);
+        
+        if (month == null)
+        {
+            await RespondAsync("Month doesn't exist!");
+            return;
+        }
+
+        month.RoleId = role.Id;
+        await _dbContext.SaveChangesAsync();
+
+        await RespondAsync($"Successfully set month {id}'s role to {role.Mention}!", ephemeral: true);
     }
 }

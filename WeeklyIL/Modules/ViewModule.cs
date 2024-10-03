@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
 using WeeklyIL.Database;
 using WeeklyIL.Utility;
 
@@ -12,66 +13,117 @@ public class ViewModule : InteractionModuleBase<SocketInteractionContext>
     private readonly WilDbContext _dbContext;
     private readonly DiscordSocketClient _client;
 
-    public ViewModule(WilDbContext dbContext, DiscordSocketClient client)
+    public ViewModule(IDbContextFactory<WilDbContext> contextFactory, DiscordSocketClient client)
     {
-        _dbContext = dbContext;
+        _dbContext = contextFactory.CreateDbContext();
         _client = client;
     }
-
-    [SlashCommand("current", "Shows the leaderboard of the current week")]
-    public async Task CurrentWeek()
+    
+    private async Task<bool> PermissionsFail()
     {
-        ulong? id = _dbContext.CurrentWeek(Context.Guild)?.Id;
-        await ViewWeek(id ?? 0);
+        if (await _dbContext.UserIsOrganizer(Context))
+        {
+            return false;
+        }
+
+        await RespondAsync("You can't do that here!", ephemeral: true);
+        return true;
     }
     
-    [SlashCommand("week", "Shows the leaderboard of the week indicated by id")]
-    public async Task ViewWeek(ulong id)
+    [SlashCommand("week", "Shows the leaderboard for a week")]
+    public async Task ViewWeek(ulong? id = null)
     {
-        await _dbContext.CreateIfNotExists(Context.Guild);
+        await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
         
         // check if the week is assigned to the current guild
-        WeekEntity? week = _dbContext.Weeks.FirstOrDefault(w => w.Id == id);
+        WeekEntity? week = id == null 
+            ? _dbContext.CurrentWeek(Context.Guild.Id) 
+            : _dbContext.Weeks.FirstOrDefault(w => w.Id == id);
+        
         bool secret = week?.StartTimestamp > DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        bool organizer = await _dbContext.UserIsOrganizer(Context);
         
         if (week == null 
             || week.GuildId != Context.Guild.Id
-            || (secret && !await _dbContext.UserIsOrganizer(Context)))
+            || (secret && !organizer))
         {
             await RespondAsync("That week doesn't exist!", ephemeral: true);
             return;
         }
 
-        string board = string.Empty;
-        int place = 1;
-        foreach (ScoreEntity score in _dbContext.Scores
-                     .Where(s => s.WeekId == id)
-                     .Where(s => s.Verified)
-                     .GroupBy(s => s.UserId)
-                     .Select(g => g.OrderBy(s => s.TimeMs).First()))
+        bool isCurrent = week.Id == _dbContext.CurrentWeek(Context.Guild.Id)?.Id;
+        bool showVideo = !isCurrent || organizer || week.ShowVideo;
+        secret |= isCurrent && showVideo && !week.ShowVideo;
+
+        EmbedBuilder eb = _dbContext.LeaderboardBuilder(_client, week, showVideo);
+        
+        await RespondAsync(embed: eb.Build(), ephemeral: secret);
+    }
+    
+    [SlashCommand("month", "Shows the leaderboard for a month")]
+    public async Task ViewMonth(ulong? id = null)
+    {
+        await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
+        
+        // check if the week is assigned to the current guild
+        id ??= _dbContext.CurrentWeek(Context.Guild.Id)?.MonthId ?? 0;
+        MonthEntity? month = _dbContext.Months.FirstOrDefault(m => m.Id == id);
+        
+        bool secret = _dbContext.Weeks
+            .Where(w => w.MonthId == id).AsEnumerable()
+            .Any(w => w.StartTimestamp > DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        bool organizer = await _dbContext.UserIsOrganizer(Context);
+        
+        if (month == null 
+            || month.GuildId != Context.Guild.Id
+            || (secret && !organizer))
         {
-            if (score.Video == null)
-            {
-                board += $":heavy_multiplication_x: - `??:??.???` - {(await _client.GetUserAsync(score.UserId)).Username}\n";
-                continue;
-            }
-            
-            board += place switch
-            {
-                1 => ":first_place:",
-                2 => ":second_place:",
-                3 => ":third_place:",
-                _ => ":checkered_flag:"
-            };
-            var ts = new TimeSpan((long)score.TimeMs * TimeSpan.TicksPerMillisecond);
-            board += $" - `{ts:mm\\:ss\\.fff}` - [{(await _client.GetUserAsync(score.UserId)).Username}]({score.Video})\n";
-            place++;
+            await RespondAsync("That month doesn't exist!", ephemeral: true);
+            return;
+        }
+
+        EmbedBuilder eb = _dbContext.LeaderboardBuilder(_client, month);
+
+        await RespondAsync(embed: eb.Build(), ephemeral: secret);
+    }
+    
+    [SlashCommand("past", "Shows previous weeks")]
+    public async Task PastWeeks()
+    {
+        WeekEntity? we = _dbContext.CurrentWeek(Context.Guild.Id);
+        if (we == null)
+        {
+            await RespondAsync("nope");
+            return;
         }
         
-        var eb = new EmbedBuilder()
-            .WithTitle($"{week.Level}")
-            .WithFooter($"ID: {week.Id}")
-            .WithDescription(board);
-        await RespondAsync(embed: eb.Build(), ephemeral: secret);
+        var eb = new EmbedBuilder().WithTitle("Previous weeks");
+        foreach (WeekEntity week in _dbContext.Weeks
+                     .Where(w => w.GuildId == Context.Guild.Id).AsEnumerable()
+                     .Where(w => w.StartTimestamp < we.StartTimestamp)
+                     .OrderByDescending(w => w.StartTimestamp))
+        {
+            eb.AddField($"<t:{week.StartTimestamp}:D> ID: {week.Id}", week.Level);
+        }
+        await RespondAsync(embed: eb.Build(), ephemeral: true);
+    }
+    
+    [SlashCommand("queue", "Shows the queue of upcoming weeks")]
+    public async Task WeeksQueue()
+    {
+        if (await PermissionsFail())
+        {
+            return;
+        }
+
+        var eb = new EmbedBuilder().WithTitle("Upcoming weeks");
+        foreach (WeekEntity week in _dbContext.Weeks
+                     .Where(w => w.GuildId == Context.Guild.Id).AsEnumerable()
+                     .Where(w => w.StartTimestamp > DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                     .OrderBy(w => w.StartTimestamp))
+        {
+            eb.AddField($"<t:{week.StartTimestamp}:D> ID: {week.Id}", week.Level);
+        }
+        await RespondAsync(embed: eb.Build(), ephemeral: true);
     }
 }

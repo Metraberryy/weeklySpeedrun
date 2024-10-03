@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WeeklyIL.Database;
 
@@ -10,9 +11,11 @@ using WeeklyIL.Database;
 namespace WeeklyIL.Migrations
 {
     [DbContext(typeof(WilDbContext))]
-    partial class WilDbContextModelSnapshot : ModelSnapshot
+    [Migration("20241002123803_Months")]
+    partial class Months
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.8");
@@ -111,9 +114,6 @@ namespace WeeklyIL.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<uint>("MonthlyWins")
-                        .HasColumnType("INTEGER");
-
                     b.Property<uint>("WeeklyWins")
                         .HasColumnType("INTEGER");
 
@@ -139,9 +139,6 @@ namespace WeeklyIL.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<ulong?>("MonthId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("ShowVideo")
                         .HasColumnType("INTEGER");
 
                     b.Property<uint>("StartTimestamp")

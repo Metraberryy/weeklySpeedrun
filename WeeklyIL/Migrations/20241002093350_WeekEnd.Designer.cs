@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WeeklyIL.Database;
 
@@ -10,9 +11,11 @@ using WeeklyIL.Database;
 namespace WeeklyIL.Migrations
 {
     [DbContext(typeof(WilDbContext))]
-    partial class WilDbContextModelSnapshot : ModelSnapshot
+    [Migration("20241002093350_WeekEnd")]
+    partial class WeekEnd
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.8");
@@ -62,23 +65,6 @@ namespace WeeklyIL.Migrations
                     b.ToTable("Guilds");
                 });
 
-            modelBuilder.Entity("WeeklyIL.Database.MonthEntity", b =>
-                {
-                    b.Property<ulong>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<ulong>("GuildId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<ulong?>("RoleId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Months");
-                });
-
             modelBuilder.Entity("WeeklyIL.Database.ScoreEntity", b =>
                 {
                     b.Property<ulong>("Id")
@@ -111,9 +97,6 @@ namespace WeeklyIL.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<uint>("MonthlyWins")
-                        .HasColumnType("INTEGER");
-
                     b.Property<uint>("WeeklyWins")
                         .HasColumnType("INTEGER");
 
@@ -137,12 +120,6 @@ namespace WeeklyIL.Migrations
                     b.Property<string>("Level")
                         .IsRequired()
                         .HasColumnType("TEXT");
-
-                    b.Property<ulong?>("MonthId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("ShowVideo")
-                        .HasColumnType("INTEGER");
 
                     b.Property<uint>("StartTimestamp")
                         .HasColumnType("INTEGER");
