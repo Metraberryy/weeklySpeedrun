@@ -26,6 +26,7 @@ public class DiscordStartupService : IHostedService
     {
         await _client.LoginAsync(TokenType.Bot, _config["token"]);
         await _client.StartAsync();
+        await _client.SetGameAsync("LittleBigPlanet\u2122");
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
