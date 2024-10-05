@@ -42,6 +42,14 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
+        if (!we.Ended && we.StartTimestamp < _dbContext.Weeks.AsEnumerable()
+                .Where(w => w.StartTimestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                .OrderBy(w => w.StartTimestamp).Last().StartTimestamp)
+        {
+            await RespondAsync("This week is currently not accepting submissions! Try again after the results are posted.", ephemeral: true);
+            return;
+        }
+
         if (!(Uri.TryCreate(video, UriKind.Absolute, out Uri? result)
               && (result.Scheme == Uri.UriSchemeHttp || result.Scheme == Uri.UriSchemeHttps)))
         {

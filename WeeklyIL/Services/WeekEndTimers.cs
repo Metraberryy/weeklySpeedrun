@@ -2,14 +2,21 @@
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
 using WeeklyIL.Database;
-using WeeklyIL.Modules;
 using WeeklyIL.Utility;
 
 namespace WeeklyIL.Services;
 
 public class WeekEndTimers
 {
-    public readonly Dictionary<ulong, Timer> Timers = new();
+    private readonly Dictionary<ulong, HashSet<Timer>> _allTimers = new();
+
+    private readonly uint[] _intervals =
+    [
+        86400U, // 1 day
+        3600U, // 1 hour
+        600U, // 10 minutes
+        0U // real one
+    ];
 
     private readonly IDbContextFactory<WilDbContext> _contextFactory;
     private readonly DiscordSocketClient _client;
@@ -28,38 +35,85 @@ public class WeekEndTimers
         WeekEntity? nextWeek = dbContext.NextWeek(id);
         if (nextWeek == null) return;
 
-        var ts = new TimeSpan(
-            (nextWeek.StartTimestamp - DateTimeOffset.UtcNow.ToUnixTimeSeconds()) * TimeSpan.TicksPerSecond
-        );
-        var newt = new Timer(o => OnWeekEnd(o), dbContext.CurrentWeek(id), ts, Timeout.InfiniteTimeSpan);
-        
-        if (Timers.TryGetValue(id, out Timer? timer))
+        bool notnull = _allTimers.TryGetValue(id, out var timers);
+        if (notnull)
         {
-            await timer.DisposeAsync();
-            Timers[id] = newt;
-            return;
+            foreach (Timer timer in timers!)
+            {
+                await timer.DisposeAsync();
+            }
+            timers.Clear();
         }
-        
-        Timers.Add(id, newt);
+        else
+        {
+            timers = [];
+            _allTimers.Add(id, timers);
+        }
+
+        for (int i = 0; i < _intervals.Length; i++)
+        {
+            uint interval = _intervals[i];
+            long seconds = nextWeek.StartTimestamp - interval - DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            if (seconds < 0) continue;
+            
+            var dueTime = new TimeSpan(seconds * TimeSpan.TicksPerSecond);
+            timers.Add(i == _intervals.Length - 1
+                ? new Timer(o => OnWeekEnd(o), dbContext.CurrentWeek(id), dueTime, Timeout.InfiniteTimeSpan)
+                : new Timer(o => OnCountdown(o), nextWeek, dueTime, Timeout.InfiniteTimeSpan));
+        }
+        _allTimers[id] = timers;
     }
     
-    public async Task OnWeekEnd(object? o)
+    private async Task OnCountdown(object? o)
+    {
+        var week = (WeekEntity)o!;
+        
+        long seconds = week.StartTimestamp - DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var remaining = new TimeSpan(seconds * TimeSpan.TicksPerSecond);
+        
+        WilDbContext dbContext = await _contextFactory.CreateDbContextAsync();
+        SocketGuild guild = _client.GetGuild(week.GuildId);
+        SocketTextChannel channel = guild.GetTextChannel(dbContext.Guild(week.GuildId).AnnouncementsChannel);
+
+        await channel.SendMessageAsync($@"Week ends in `{remaining.Days}d {remaining:hh\:mm}`!");
+    }
+    
+    private async Task OnWeekEnd(object? o)
     {
         await Task.Delay(1000); // trying to avoid race conditions lmao
 
         if (o == null) return; // this is the first week in the guild, im too lazy rn to make it announce anything
         var week = (WeekEntity)o;
-
+        
         WilDbContext dbContext = await _contextFactory.CreateDbContextAsync();
-        week.Ended = true;
-        dbContext.Update(week);
-        await dbContext.SaveChangesAsync();
+        SocketGuild guild = _client.GetGuild(week.GuildId);
+        SocketTextChannel channel = guild.GetTextChannel(dbContext.Guild(week.GuildId).AnnouncementsChannel);
+
+        if (!await TryEndWeek(week))
+        {
+            await channel.SendMessageAsync("Week ended! Results will be posted when all currently pending runs are verified.");
+        }
+    }
+
+    public async Task<bool> TryEndWeek(WeekEntity week)
+    {
+        WilDbContext dbContext = await _contextFactory.CreateDbContextAsync();
 
         await UpdateGuildTimer(week.GuildId);
 
         SocketGuild guild = _client.GetGuild(week.GuildId);
         SocketTextChannel channel = guild.GetTextChannel(dbContext.Guild(week.GuildId).AnnouncementsChannel);
-        EmbedBuilder eb = dbContext.LeaderboardBuilder(_client, week, true);
+
+        if (dbContext.Scores.Where(s => s.WeekId == week.Id).Any(s => !s.Verified))
+        {
+            return false;
+        }
+        
+        week.Ended = true;
+        dbContext.Update(week);
+        await dbContext.SaveChangesAsync();
+        
+        EmbedBuilder eb = dbContext.LeaderboardBuilder(_client, week, null, true);
         await channel.SendMessageAsync("Week ended! This is the leaderboard as of now:", embed: eb.Build());
 
         ScoreEntity? first = dbContext.Scores
@@ -68,7 +122,7 @@ public class WeekEndTimers
             .OrderBy(s => s.TimeMs)
             .FirstOrDefault();
 
-        if (first == null) return; // sad
+        if (first == null) return true; // sad
 
         await dbContext.CreateUserIfNotExists(first.UserId);
 
@@ -84,7 +138,7 @@ public class WeekEndTimers
 
         await dbContext.SaveChangesAsync();
 
-        if (week.MonthId == null) return;
+        if (week.MonthId == null) return true;
 
         var weeks = dbContext.Weeks.Where(w => w.MonthId == week.MonthId); // get weeks in month
 
@@ -101,19 +155,29 @@ public class WeekEndTimers
                 TimeMs = g
                     .GroupBy(s => s.WeekId) // group user's scores by week id
                     .Select(std => std.OrderBy(s => s.TimeMs).First().TimeMs) // get the best for each week
-                    .Aggregate((uint)0, (total, time) => total + (uint)time) // combine best times
+                    .Aggregate((uint)0, (total, time) => total + (uint)time!) // combine best times
             })
             .OrderBy(result => result.TimeMs) // order by time
             .FirstOrDefault();
 
-        if (monthFirst == null) return; // also sad
+        if (monthFirst == null) return true; // also sad
 
         user = guild.GetUser(monthFirst.UserId);
         dbContext.User(monthFirst.UserId).MonthlyWins++;
         await dbContext.SaveChangesAsync();
 
         ulong? rid = dbContext.Month((ulong)week.MonthId).RoleId;
-        if (rid == null) return;
+        if (rid == null) return true;
         await user.AddRoleAsync((ulong)rid);
+        
+        return true;
+    }
+
+    public async Task DisposeAsync()
+    {
+        foreach (Timer t in _allTimers.SelectMany(kvp => kvp.Value))
+        {
+            await t.DisposeAsync();
+        }
     }
 }

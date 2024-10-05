@@ -33,6 +33,27 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
         return true;
     }
     
+    [SlashCommand("end", "Try to end a week immediately")]
+    public async Task EndWeek(ulong id)
+    {
+        if (await PermissionsFail())
+        {
+            return;
+        }
+        
+        WeekEntity? week = await _dbContext.Weeks.FindAsync(id);
+        if (week == null) await RespondAsync("That week doesn't exist!");
+
+        if (await _weekEnder.TryEndWeek(week!))
+        {
+            await RespondAsync("Successfully ended week!", ephemeral: true);
+        }
+        else
+        {
+            await RespondAsync("Failed to end week (pending submissions)", ephemeral: true);
+        }
+    }
+    
     [SlashCommand("new", "Create a new week and add it to the queue")]
     public async Task NewWeek()
     {
@@ -64,7 +85,7 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
         public string Level { get; set; }
         
         [InputLabel("Show videos before the week is over?")]
-        [ModalTextInput("show_video", placeholder: "0/1")]
+        [ModalTextInput("show_video", placeholder: "True/False")]
         public string ShowVideo { get; set; }
     }
     [ModalInteraction("first_week", true)]
@@ -88,7 +109,7 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
         public string Level { get; set; }
         
         [InputLabel("Show videos before the week is over?")]
-        [ModalTextInput("show_video", placeholder: "0/1")]
+        [ModalTextInput("show_video", placeholder: "True/False")]
         public string ShowVideo { get; set; }
     }
     [ModalInteraction("new_week", true)]
@@ -142,7 +163,7 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
             .WithTitle("Edit week")
             .AddTextInput("Start of the week as a unix timestamp", "timestamp", placeholder: "1727601767", value: week.StartTimestamp.ToString())
             .AddTextInput("What are we running?", "level_name", placeholder: "https://beacon.lbpunion.com/slot/17962/getting-over-it-14-players", value: week.Level)
-            .AddTextInput("Show videos before the week is over?", "show_video", placeholder: "0/1", value: week.ShowVideo.ToString())
+            .AddTextInput("Show videos before the week is over?", "show_video", placeholder: "True/False", value: week.ShowVideo.ToString())
             .AddTextInput("ID", "week_id", value: id.ToString());
 
         await RespondWithModalAsync(mb.Build());
@@ -167,7 +188,7 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
     [ModalInteraction("edit_week", true)]
     public async Task EditWeekResponse(EditWeekModal modal)
     {
-        WeekEntity week = (await _dbContext.Weeks.FindAsync(modal.WeekId))!;
+        WeekEntity week = _dbContext.Week(modal.WeekId);
         if (week.GuildId != Context.Guild.Id) return;
         
         _dbContext.Weeks.Update(week);

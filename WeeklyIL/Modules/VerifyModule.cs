@@ -4,6 +4,7 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
 using WeeklyIL.Database;
+using WeeklyIL.Services;
 using WeeklyIL.Utility;
 
 namespace WeeklyIL.Modules;
@@ -12,11 +13,13 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly WilDbContext _dbContext;
     private readonly DiscordSocketClient _client;
+    private readonly WeekEndTimers _weekEnder;
 
-    public VerifyModule(IDbContextFactory<WilDbContext> contextFactory, DiscordSocketClient client)
+    public VerifyModule(IDbContextFactory<WilDbContext> contextFactory, DiscordSocketClient client, WeekEndTimers weekEnder)
     {
         _dbContext = contextFactory.CreateDbContext();
         _client = client;
+        _weekEnder = weekEnder;
     }
     
     public class VerifyModal : IModal
@@ -61,6 +64,12 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
 
         ScoreEntity? score = _dbContext.Scores.FirstOrDefault(s => s.Id == modal.RunId);
         if (score == null) return;
+
+        if (score.Verified)
+        {
+            await RespondAsync("The run has already been verified.", ephemeral: true);
+            return;
+        }
         
         WeekEntity week = _dbContext.Weeks.First(w => w.Id == score.WeekId);
         if (week.GuildId != Context.Guild.Id) return;
@@ -68,15 +77,52 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
         score.TimeMs = (uint)time.TotalMilliseconds;
         score.Verified = true;
         await _dbContext.SaveChangesAsync();
+
+        // try to end the week if its waiting for verifications
+        if (!week.Ended && week.StartTimestamp < _dbContext.Weeks.AsEnumerable()
+                .Where(w => w.StartTimestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                .OrderBy(w => w.StartTimestamp).Last().StartTimestamp) await _weekEnder.TryEndWeek(week);
         
         try
         {
             var channel = 
                 (SocketTextChannel)await _client.GetChannelAsync(
                     _dbContext.Guild(Context.Guild.Id).AnnouncementsChannel);
+            
             string mention = (await _client.GetUserAsync(score.UserId)).Mention;
             var ts = new TimeSpan((long)score.TimeMs * TimeSpan.TicksPerMillisecond);
-            await channel.SendMessageAsync($@"{mention} got a time of `{ts:mm\:ss\.fff}` on {week.Level} !");
+            
+            string level = week.Level;
+            Uri? uri = level.GetUriFromString();
+            if (uri != null)
+            {
+                level = level.Replace(uri.OriginalString, $"<{uri.OriginalString}>");
+            }
+
+            uint place = (uint)(_dbContext.Scores
+                .Where(s => s.WeekId == score.WeekId)
+                .Where(s => s.Verified)
+                .GroupBy(s => s.UserId)
+                .Select(g => g.OrderBy(s => s.TimeMs).First()).ToList()
+                .IndexOf(score) + 1);
+
+            string placeStr = place.ToString();
+            if (placeStr.Length > 1 && placeStr[^2] == '1')
+            {
+                placeStr += "th";
+            }
+            else
+            {
+                placeStr += placeStr.Last() switch
+                {
+                    '1' => "st",
+                    '2' => "nd",
+                    '3' => "rd",
+                    _ => "th"
+                };
+            }
+
+            if (place != 0) await channel.SendMessageAsync($@"{mention} got a {placeStr} place PB with a time of `{ts:mm\:ss\.fff}` on {level} !");
         } catch (Exception _) { /* ignored */ }
 
         await (await Context.Channel.GetMessageAsync(modal.MessageId)).DeleteAsync();
@@ -87,10 +133,10 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
     public async Task RejectRun(RejectModal modal)
     {
         ScoreEntity? score = _dbContext.Scores.FirstOrDefault(s => s.Id == modal.RunId);
-        if (score == null || _dbContext.Weeks.First(w => w.Id == score.WeekId).GuildId != Context.Guild.Id)
-        {
-            return;
-        }
+        if (score == null) return;
+        
+        WeekEntity week = _dbContext.Week(score.WeekId);
+        if (week.GuildId != Context.Guild.Id) return;
 
         try
         {
@@ -100,6 +146,11 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
         
         _dbContext.Remove(score);
         await _dbContext.SaveChangesAsync();
+        
+        // try to end the week if its waiting for verifications
+        if (!week.Ended && week.StartTimestamp < _dbContext.Weeks.AsEnumerable()
+                .Where(w => w.StartTimestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                .OrderBy(w => w.StartTimestamp).Last().StartTimestamp) await _weekEnder.TryEndWeek(week);
 
         await (await Context.Channel.GetMessageAsync(modal.MessageId)).DeleteAsync();
         await DeferAsync();

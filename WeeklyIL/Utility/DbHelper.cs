@@ -81,12 +81,12 @@ public static class DbHelper
         return dbContext.Users.Find(id)!;
     }
     
-    public static EmbedBuilder LeaderboardBuilder(this WilDbContext dbContext, DiscordSocketClient client, WeekEntity week, bool forceVideo)
+    public static EmbedBuilder LeaderboardBuilder(this WilDbContext dbContext, DiscordSocketClient client, WeekEntity week, WeekEntity? nextWeek, bool forceVideo)
     {
         string board = string.Empty;
         int place = 1;
         foreach (ScoreEntity score in dbContext.Scores
-                     .Where(s => s.WeekId == week.Id) // 
+                     .Where(s => s.WeekId == week.Id)
                      .Where(s => s.Verified)
                      .GroupBy(s => s.UserId)
                      .Select(g => g.OrderBy(s => s.TimeMs).First()))
@@ -106,16 +106,32 @@ public static class DbHelper
                 3 => ":third_place:",
                 _ => ":checkered_flag:"
             };
-            var ts = new TimeSpan((long)score.TimeMs * TimeSpan.TicksPerMillisecond);
+            var ts = new TimeSpan((long)score.TimeMs! * TimeSpan.TicksPerMillisecond);
             board += $@" - `{ts:mm\:ss\.fff}` - ";
             board += forceVideo || week.ShowVideo ? $"[{name}]({score.Video})\n" : $"{name}";
             place++;
         }
 
-        return new EmbedBuilder()
-            .WithTitle($"{week.Level}")
+        var eb = new EmbedBuilder()
             .WithDescription(board)
             .WithFooter($"ID: {week.Id}");
+
+        Uri? uri = week.Level.GetUriFromString();
+        if (uri == null)
+        {
+            eb.WithAuthor(week.Level);
+        }
+        else
+        {
+            eb.WithAuthor(week.Level, url: uri.OriginalString);
+        }
+
+        if (nextWeek == null) return eb;
+        
+        var remaining = new TimeSpan((nextWeek.StartTimestamp - DateTimeOffset.UtcNow.ToUnixTimeSeconds()) * TimeSpan.TicksPerSecond);
+        eb.WithTitle($@"{remaining.Days}d {remaining:hh\:mm} remaining");
+
+        return eb;
     }
     
     public static EmbedBuilder LeaderboardBuilder(this WilDbContext dbContext, DiscordSocketClient client, MonthEntity month)
@@ -137,7 +153,7 @@ public static class DbHelper
                          TimeMs = g
                              .GroupBy(s => s.WeekId) // group user's scores by week id
                              .Select(std => std.OrderBy(s => s.TimeMs).First().TimeMs) // get the best for each week
-                             .Aggregate(0U, (total, time) => total + (uint)time) // combine best times
+                             .Aggregate(0U, (total, time) => total + (uint)time!) // combine best times
                      })
                      .OrderBy(result => result.TimeMs)) // order by time
         {

@@ -10,40 +10,46 @@ public class WeekEndService : IHostedService
     private readonly WilDbContext _dbContext;
     private readonly WeekEndTimers _timers;
 
-    public WeekEndService(IDbContextFactory<WilDbContext> contextFactory, WeekEndTimers timers, DiscordSocketClient _)
+    public WeekEndService(IDbContextFactory<WilDbContext> contextFactory, WeekEndTimers timers, DiscordSocketClient client)
     {
         _dbContext = contextFactory.CreateDbContext();
         _timers = timers;
+
+        client.Ready += Ready;
     }
     
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        // yeah man
+    }
+
+    private async Task Ready()
+    {
         foreach (GuildEntity guild in _dbContext.Guilds)
         {
-            var weeks = _dbContext.Weeks
+            // this was an attempt to go back and end weeks if the bot was down when they were supposed to end
+            // hopefully it wont be an issue anyway
+            /*var weeks = _dbContext.Weeks
                 .Where(w => w.GuildId == guild.Id).AsEnumerable()
                 .OrderBy(w => w.StartTimestamp).ToList();
             for (int i = 0; i < weeks.Count - 1; i++)
             {
                 WeekEntity week = weeks[i];
                 if (week.Ended) continue;
-                
+
                 WeekEntity nextWeek = weeks[i + 1];
-            
+
                 if (nextWeek.StartTimestamp <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
                 {
-                    _timers.OnWeekEnd(week);
+                    await _timers.TryEndWeek(week);
                 }
-            }
+            }*/
             await _timers.UpdateGuildTimer(guild.Id);
         }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        foreach (var kvp in _timers.Timers)
-        {
-            await kvp.Value.DisposeAsync();
-        }
+        await _timers.DisposeAsync();
     }
 }

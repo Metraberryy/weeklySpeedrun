@@ -55,7 +55,16 @@ public class ViewModule : InteractionModuleBase<SocketInteractionContext>
         bool showVideo = !isCurrent || organizer || week.ShowVideo;
         secret |= isCurrent && showVideo && !week.ShowVideo;
 
-        EmbedBuilder eb = _dbContext.LeaderboardBuilder(_client, week, showVideo);
+        WeekEntity? nw = null;
+        if (isCurrent)
+        {
+            nw = _dbContext.Weeks
+                .Where(w => w.GuildId == Context.Guild.Id).AsEnumerable()
+                .Where(w => w.StartTimestamp > DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                .OrderBy(w => w.StartTimestamp)
+                .FirstOrDefault();
+        }
+        EmbedBuilder eb = _dbContext.LeaderboardBuilder(_client, week, nw, showVideo);
         
         await RespondAsync(embed: eb.Build(), ephemeral: secret);
     }
