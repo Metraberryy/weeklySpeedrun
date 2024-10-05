@@ -89,7 +89,8 @@ public static class DbHelper
                      .Where(s => s.WeekId == week.Id)
                      .Where(s => s.Verified)
                      .GroupBy(s => s.UserId)
-                     .Select(g => g.OrderBy(s => s.TimeMs).First()))
+                     .Select(g => g.OrderBy(s => s.TimeMs).First()).AsEnumerable()
+                     .OrderBy(s => s.TimeMs))
         {
             string name = client.GetUser(score.UserId).Username;
             
