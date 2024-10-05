@@ -81,16 +81,20 @@ public static class DbHelper
         return dbContext.Users.Find(id)!;
     }
     
-    public static EmbedBuilder LeaderboardBuilder(this WilDbContext dbContext, DiscordSocketClient client, WeekEntity week, WeekEntity? nextWeek, bool forceVideo)
+    public static EmbedBuilder LeaderboardBuilder(this WilDbContext dbContext, DiscordSocketClient client, WeekEntity week, WeekEntity? nextWeek, bool forceVideo, bool showObsolete = false)
     {
         string board = string.Empty;
         int place = 1;
-        foreach (ScoreEntity score in dbContext.Scores
-                     .Where(s => s.WeekId == week.Id)
-                     .Where(s => s.Verified)
-                     .GroupBy(s => s.UserId)
-                     .Select(g => g.OrderBy(s => s.TimeMs).First()).AsEnumerable()
-                     .OrderBy(s => s.TimeMs))
+        var scores = dbContext.Scores
+            .Where(s => s.WeekId == week.Id)
+            .Where(s => s.Verified);
+        if (!showObsolete)
+        {
+            scores = scores
+                .GroupBy(s => s.UserId)
+                .Select(g => g.OrderBy(s => s.TimeMs).First());
+        }
+        foreach (ScoreEntity score in scores.AsEnumerable().OrderBy(s => s.TimeMs))
         {
             string name = client.GetUser(score.UserId).Username;
             
@@ -109,7 +113,10 @@ public static class DbHelper
             };
             var ts = new TimeSpan((long)score.TimeMs! * TimeSpan.TicksPerMillisecond);
             board += $@" - `{ts:mm\:ss\.fff}` - ";
-            board += forceVideo || week.ShowVideo ? $"[{name}]({score.Video})\n" : $"{name}";
+            board += forceVideo || week.ShowVideo ? $"[{name}]({score.Video})" : name;
+            if (showObsolete) board += $" : {score.Id}";
+            board += "\n";
+            
             place++;
         }
 
@@ -130,7 +137,7 @@ public static class DbHelper
         if (nextWeek == null) return eb;
         
         var remaining = new TimeSpan((nextWeek.StartTimestamp - DateTimeOffset.UtcNow.ToUnixTimeSeconds()) * TimeSpan.TicksPerSecond);
-        eb.WithTitle($@"{remaining.Days}d {remaining:hh\:mm} remaining");
+        eb.WithTitle($"{remaining.Days}d{remaining:hh}h{remaining:mm}m remaining");
 
         return eb;
     }
