@@ -71,7 +71,7 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
         
-        WeekEntity week = _dbContext.Weeks.First(w => w.Id == score.WeekId);
+        WeekEntity week = _dbContext.Week(score.WeekId);
         if (week.GuildId != Context.Guild.Id) return;
 
         score.TimeMs = (uint)time.TotalMilliseconds;
@@ -123,6 +123,13 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
             }
 
             if (place != 0) await channel.SendMessageAsync($@"{mention} got a {placeStr} place PB with a time of `{ts:mm\:ss\.fff}` on {level} !");
+            
+            SocketGuildUser? user = Context.Guild.GetUser(score.UserId);
+            await user.AddRolesAsync(_dbContext.Guilds
+                .Include(g => g.GameRoles)
+                .First(g => g.Id == week.GuildId).GameRoles
+                .Where(r => r.Game == week.Game)
+                .Select(r => r.RoleId));
         } catch (Exception _) { /* ignored */ }
 
         await (await Context.Channel.GetMessageAsync(modal.MessageId)).DeleteAsync();

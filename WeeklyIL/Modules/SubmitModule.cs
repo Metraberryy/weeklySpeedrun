@@ -21,7 +21,7 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
     }
     
     [SlashCommand("video", "Submits a time with video proof")]
-    public async Task WithVideo(string video, ulong? week = null)
+    public async Task WithVideo(string video, ulong? weekId = null)
     {
         await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
         ulong subChannel = _dbContext.Guilds.First(g => g.Id == Context.Guild.Id).SubmissionsChannel;
@@ -31,7 +31,7 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        ulong weekId = week ?? _dbContext.CurrentWeek(Context.Guild.Id)?.Id ?? 0;
+        weekId ??= _dbContext.CurrentWeek(Context.Guild.Id)?.Id ?? 0;
         WeekEntity? we = _dbContext.Weeks
             .Where(w => w.GuildId == Context.Guild.Id)
             .FirstOrDefault(w => w.Id == weekId);
@@ -60,7 +60,7 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
         await _dbContext.Scores.AddAsync(new ScoreEntity
         {
             UserId = Context.User.Id,
-            WeekId = weekId,
+            WeekId = (ulong)weekId,
             Video = video
         });
         await _dbContext.SaveChangesAsync();
@@ -80,10 +80,10 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
         await RespondAsync("Video submitted! It will be timed and verified soon.", ephemeral: true);
     }
     
-    [SlashCommand("blank", "your did it")]
-    public async Task NoVideo(ulong? week = null)
+    [SlashCommand("blank", "Submits a blank time to the leaderboard - you won't have a time without proof")]
+    public async Task NoVideo(ulong? weekId = null)
     {
-        ulong weekId = week ?? _dbContext.CurrentWeek(Context.Guild.Id)?.Id ?? 0;
+        weekId ??= _dbContext.CurrentWeek(Context.Guild.Id)?.Id ?? 0;
         WeekEntity? we = _dbContext.Weeks
             .Where(w => w.GuildId == Context.Guild.Id)
             .FirstOrDefault(w => w.Id == weekId);
@@ -99,13 +99,20 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
         await _dbContext.Scores.AddAsync(new ScoreEntity
         {
             UserId = Context.User.Id,
-            WeekId = weekId,
+            WeekId = (ulong)weekId,
             TimeMs = uint.MaxValue,
             Verified = true
         });
         await _dbContext.SaveChangesAsync();
         
         await RespondAsync("Submitted without proof! You'll show up on the leaderboard without a time.", ephemeral: true);
+        
+        SocketGuildUser? user = Context.Guild.GetUser(Context.User.Id);
+        await user.AddRolesAsync(_dbContext.Guilds
+            .Include(g => g.GameRoles)
+            .First(g => g.Id == we.GuildId).GameRoles
+            .Where(r => r.Game == we.Game)
+            .Select(r => r.RoleId));
     }
 }
 

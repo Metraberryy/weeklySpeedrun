@@ -7,7 +7,8 @@ public class GuildEntity
 {
     public GuildEntity()
     {
-        WeeklyRoles = new HashSet<AchievementRole>();
+        WeeklyRoles = new HashSet<WeeklyRole>();
+        GameRoles = new HashSet<GameRole>();
     }
     
     [Key]
@@ -16,7 +17,8 @@ public class GuildEntity
     public ulong AnnouncementsChannel { get; set; }
     public ulong ModeratorRole { get; set; }
     public ulong OrganizerRole { get; set; }
-    public ISet<AchievementRole> WeeklyRoles { get; set; }
+    public ISet<WeeklyRole> WeeklyRoles { get; set; }
+    public ISet<GameRole> GameRoles { get; set; }
 }
 
 public class UserEntity
@@ -44,6 +46,7 @@ public class WeekEntity
     public ulong GuildId { get; set; }
     public ulong? MonthId { get; set; }
     public string Level { get; set; }
+    public string Game { get; set; }
     public uint StartTimestamp { get; set; }
     public bool ShowVideo { get; set; }
     public bool Ended { get; set; }
@@ -61,11 +64,20 @@ public class ScoreEntity
     public bool Verified { get; set; }
 }
 
-public class AchievementRole
+public class WeeklyRole
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public ulong Id { get; set; }
     public ulong RoleId { get; set; }
     public uint Requirement { get; set; }
+}
+
+public class GameRole
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public ulong Id { get; set; }
+    public ulong RoleId { get; set; }
+    public string Game { get; set; }
 }

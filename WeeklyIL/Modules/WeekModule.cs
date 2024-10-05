@@ -84,6 +84,10 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
         [ModalTextInput("level_name", placeholder: "https://beacon.lbpunion.com/slot/17962/getting-over-it-14-players")]
         public string Level { get; set; }
         
+        [InputLabel("What game?")]
+        [ModalTextInput("game_name", placeholder: "Exactly how it's written in the role command")]
+        public string Game { get; set; }
+        
         [InputLabel("Show videos before the week is over?")]
         [ModalTextInput("show_video", placeholder: "True/False")]
         public string ShowVideo { get; set; }
@@ -91,13 +95,12 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
     [ModalInteraction("first_week", true)]
     public async Task FirstWeekResponse(FirstWeekModal modal)
     {
-        if (modal.Timestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
-        {
-            // silently fail so the modal can be resubmitted
-            return;
-        }
+        if (modal.Timestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) return;
+        if (_dbContext.Guilds.Include(g => g.GameRoles)
+            .First(g => g.Id == Context.Guild.Id)
+            .GameRoles.All(r => r.Game != modal.Game)) return;
         
-        await CreateWeek(modal.Timestamp, modal.Level, bool.Parse(modal.ShowVideo));
+        await CreateWeek(modal.Timestamp, modal.Level, modal.Game, bool.Parse(modal.ShowVideo));
     }
 
     public class NewWeekModal : IModal
@@ -108,6 +111,10 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
         [ModalTextInput("level_name", placeholder: "https://beacon.lbpunion.com/slot/17962/getting-over-it-14-players")]
         public string Level { get; set; }
         
+        [InputLabel("What game?")]
+        [ModalTextInput("game_name", placeholder: "Exactly how it's written in the role command")]
+        public string Game { get; set; }
+        
         [InputLabel("Show videos before the week is over?")]
         [ModalTextInput("show_video", placeholder: "True/False")]
         public string ShowVideo { get; set; }
@@ -115,17 +122,21 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
     [ModalInteraction("new_week", true)]
     public async Task NewWeekResponse(NewWeekModal modal)
     {
+        if (_dbContext.Guilds.Include(g => g.GameRoles)
+            .First(g => g.Id == Context.Guild.Id)
+            .GameRoles.All(r => r.Game != modal.Game)) return;
         uint time = _dbContext.Weeks.OrderByDescending(w => w.StartTimestamp).First(w => w.GuildId == Context.Guild.Id).StartTimestamp + 604800;
-        await CreateWeek(time, modal.Level, bool.Parse(modal.ShowVideo));
+        await CreateWeek(time, modal.Level, modal.Game, bool.Parse(modal.ShowVideo));
     }
 
-    private async Task CreateWeek(uint time, string level, bool showVideo)
+    private async Task CreateWeek(uint time, string level, string game, bool showVideo)
     {
         var entry = await _dbContext.AddAsync(new WeekEntity
         {
             GuildId = Context.Guild.Id,
             StartTimestamp = time,
             Level = level,
+            Game = game,
             ShowVideo = showVideo
         });
         await _dbContext.SaveChangesAsync();

@@ -56,21 +56,63 @@ public class RoleModule : InteractionModuleBase<SocketInteractionContext>
         GuildEntity guild = _dbContext.Guilds
             .Include(g => g.WeeklyRoles)
             .First(g => g.Id == Context.Guild.Id);
-        AchievementRole? ar = guild.WeeklyRoles.FirstOrDefault(r => r.Requirement == requirement || r.RoleId == role.Id);
-        if (ar == null)
+        var roles = guild.WeeklyRoles.Where(r => r.Requirement == requirement || r.RoleId == role.Id);
+        foreach (WeeklyRole wr in roles)
         {
-            guild.WeeklyRoles.Add(new AchievementRole { Requirement = (uint)requirement, RoleId = role.Id });
+            guild.WeeklyRoles.Remove(wr);
         }
-        else
-        {
-            ar.Requirement = (uint)requirement;
-            ar.RoleId = role.Id;
-        }
+        guild.WeeklyRoles.Add(new WeeklyRole { Requirement = (uint)requirement, RoleId = role.Id });
 
         await _dbContext.SaveChangesAsync();
 
         string word = requirement > 1 ? "weeklies" : "weekly";
         await RespondAsync($"Successfully set \"{requirement} {word}\" role to {role.Mention}!", ephemeral: true);
+    }
+    
+    [SlashCommand("game", "Sets a role for a game")]
+    [RequireUserPermission(GuildPermission.ManageRoles)]
+    public async Task GameRole(string? game = null, SocketRole? role = null)
+    {
+        await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
+
+        if (game == null && role == null)
+        {
+            string desc = _dbContext.Guilds
+                .Include(g => g.GameRoles)
+                .First(g => g.Id == Context.Guild.Id).GameRoles
+                .Aggregate("", (current, gr) => current + $"{gr.Game} : {Context.Guild.GetRole(gr.RoleId).Mention}");
+            var eb = new EmbedBuilder()
+                .WithTitle("Game roles")
+                .WithDescription(desc);
+            await RespondAsync(embed: eb.Build(), ephemeral: true);
+            return;
+        }
+
+        if (game == null)
+        {
+            await RespondAsync($"Game is missing!", ephemeral: true);
+            return;
+        }
+        
+        if (role == null)
+        {
+            await RespondAsync($"Role is missing!", ephemeral: true);
+            return;
+        }
+        
+        GuildEntity guild = _dbContext.Guilds
+            .Include(g => g.GameRoles)
+            .First(g => g.Id == Context.Guild.Id);
+        var roles = guild.GameRoles.Where(r => r.Game == game || r.RoleId == role.Id);
+        foreach (GameRole gr in roles)
+        {
+            guild.GameRoles.Remove(gr);
+        }
+        guild.GameRoles.Add(new GameRole { Game = game, RoleId = role.Id });
+
+        await _dbContext.SaveChangesAsync();
+
+        await RespondAsync($"Successfully set \"{game}\" role to {role.Mention}!", ephemeral: true);
     }
     
     [SlashCommand("monthly", "Sets a role to be awarded to the WR holder of a month by id")]

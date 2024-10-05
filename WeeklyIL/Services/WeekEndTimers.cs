@@ -75,7 +75,7 @@ public class WeekEndTimers
         SocketGuild guild = _client.GetGuild(week.GuildId);
         SocketTextChannel channel = guild.GetTextChannel(dbContext.Guild(week.GuildId).AnnouncementsChannel);
 
-        await channel.SendMessageAsync($@"Week ends in `{remaining.Days}d {remaining:hh\:mm}`!");
+        await channel.SendMessageAsync($@"Week ends in `{Math.Floor(remaining.TotalHours)}h {remaining:mm}m`!");
     }
     
     private async Task OnWeekEnd(object? o)
