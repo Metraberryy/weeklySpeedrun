@@ -17,6 +17,17 @@ public class RoleModule : InteractionModuleBase<SocketInteractionContext>
         _dbContext = contextFactory.CreateDbContext();
     }
     
+    private async Task<bool> PermissionsFail()
+    {
+        if (await _dbContext.UserIsOrganizer(Context))
+        {
+            return false;
+        }
+
+        await RespondAsync("You can't do that here!", ephemeral: true);
+        return true;
+    }
+    
     [SlashCommand("moderator", "Sets the moderator permissions role")]
     [RequireUserPermission(GuildPermission.ManageRoles)]
     public async Task SetModRole(SocketRole role)
@@ -42,10 +53,12 @@ public class RoleModule : InteractionModuleBase<SocketInteractionContext>
     }
     
     [SlashCommand("weekly", "Sets a role for a certain number of weekly WRs")]
-    [RequireUserPermission(GuildPermission.ManageRoles)]
     public async Task SetWeeklyRole(int requirement, SocketRole role)
     {
-        await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
+        if (await PermissionsFail())
+        {
+            return;
+        }
 
         if (requirement < 1)
         {
@@ -70,17 +83,19 @@ public class RoleModule : InteractionModuleBase<SocketInteractionContext>
     }
     
     [SlashCommand("game", "Sets a role for a game")]
-    [RequireUserPermission(GuildPermission.ManageRoles)]
     public async Task GameRole(string? game = null, SocketRole? role = null)
     {
-        await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
+        if (await PermissionsFail())
+        {
+            return;
+        }
 
         if (game == null && role == null)
         {
             string desc = _dbContext.Guilds
                 .Include(g => g.GameRoles)
                 .First(g => g.Id == Context.Guild.Id).GameRoles
-                .Aggregate("", (current, gr) => current + $"{gr.Game} : {Context.Guild.GetRole(gr.RoleId).Mention}");
+                .Aggregate("", (current, gr) => current + $"{gr.Game} : {Context.Guild.GetRole(gr.RoleId).Mention}\n");
             var eb = new EmbedBuilder()
                 .WithTitle("Game roles")
                 .WithDescription(desc);
@@ -116,10 +131,12 @@ public class RoleModule : InteractionModuleBase<SocketInteractionContext>
     }
     
     [SlashCommand("monthly", "Sets a role to be awarded to the WR holder of a month by id")]
-    [RequireUserPermission(GuildPermission.ManageRoles)]
     public async Task SetMonthlyRole(ulong id, SocketRole role)
     {
-        await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
+        if (await PermissionsFail())
+        {
+            return;
+        }
 
         MonthEntity? month = _dbContext.Months
             .Where(w => w.GuildId == Context.Guild.Id)

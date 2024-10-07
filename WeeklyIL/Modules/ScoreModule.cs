@@ -8,7 +8,7 @@ using WeeklyIL.Utility;
 
 namespace WeeklyIL.Modules;
 
-[Group("scores", "Commands for managing scores")]
+[Group("score", "Commands for managing scores")]
 public class ScoreModule : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly WilDbContext _dbContext;

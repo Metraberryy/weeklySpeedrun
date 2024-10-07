@@ -94,9 +94,13 @@ public static class DbHelper
                 .GroupBy(s => s.UserId)
                 .Select(g => g.OrderBy(s => s.TimeMs).First());
         }
+
+        client.GetGuild(week.GuildId).DownloadUsersAsync().Wait();
+        
         foreach (ScoreEntity score in scores.AsEnumerable().OrderBy(s => s.TimeMs))
         {
-            string name = client.GetUser(score.UserId).Username;
+            SocketUser? u = client.GetUser(score.UserId);
+            string name = u == null ? "unknown" : u.Username;
             
             if (score.Video == null)
             {

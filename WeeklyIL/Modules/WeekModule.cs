@@ -85,7 +85,7 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
         public string Level { get; set; }
         
         [InputLabel("What game?")]
-        [ModalTextInput("game_name", placeholder: "Exactly how it's written in the role command")]
+        [ModalTextInput("game_name", placeholder: "Exactly how it's written in the /role game command")]
         public string Game { get; set; }
         
         [InputLabel("Show videos before the week is over?")]
@@ -112,7 +112,7 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
         public string Level { get; set; }
         
         [InputLabel("What game?")]
-        [ModalTextInput("game_name", placeholder: "Exactly how it's written in the role command")]
+        [ModalTextInput("game_name", placeholder: "Exactly how it's written in the /role game command")]
         public string Game { get; set; }
         
         [InputLabel("Show videos before the week is over?")]
@@ -174,6 +174,7 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
             .WithTitle("Edit week")
             .AddTextInput("Start of the week as a unix timestamp", "timestamp", placeholder: "1727601767", value: week.StartTimestamp.ToString())
             .AddTextInput("What are we running?", "level_name", placeholder: "https://beacon.lbpunion.com/slot/17962/getting-over-it-14-players", value: week.Level)
+            .AddTextInput("What game?", "game_name", placeholder: "Exactly how it's written in the /role game command", value: week.Game)
             .AddTextInput("Show videos before the week is over?", "show_video", placeholder: "True/False", value: week.ShowVideo.ToString())
             .AddTextInput("ID", "week_id", value: id.ToString());
 
@@ -190,6 +191,9 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
         [ModalTextInput("level_name")]
         public string Level { get; set; }
         
+        [ModalTextInput("game_name")]
+        public string Game { get; set; }
+        
         [ModalTextInput("week_id")]
         public ulong WeekId { get; set; }
         
@@ -201,10 +205,14 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
     {
         WeekEntity week = _dbContext.Week(modal.WeekId);
         if (week.GuildId != Context.Guild.Id) return;
+        if (_dbContext.Guilds.Include(g => g.GameRoles)
+            .First(g => g.Id == Context.Guild.Id)
+            .GameRoles.All(r => r.Game != modal.Game)) return;
         
         _dbContext.Weeks.Update(week);
         week.StartTimestamp = modal.Timestamp;
         week.Level = modal.Level;
+        week.Game = modal.Game;
         week.ShowVideo = bool.Parse(modal.ShowVideo);
         
         await _dbContext.SaveChangesAsync();

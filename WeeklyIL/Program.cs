@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.Configuration;
@@ -16,7 +17,10 @@ using IHost host = Host.CreateDefaultBuilder(args)
     .ConfigureServices(services => // add services
     {
         services.AddDbContextFactory<WilDbContext>();
-        services.AddSingleton<DiscordSocketClient>();
+        services.AddSingleton(new DiscordSocketClient(new DiscordSocketConfig
+        {
+            GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.GuildMembers
+        }));
         services.AddSingleton<InteractionService>();
         services.AddSingleton<WeekEndTimers>();
         services.AddHostedService<WeekEndService>();

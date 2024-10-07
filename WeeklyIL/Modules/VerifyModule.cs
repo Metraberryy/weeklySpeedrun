@@ -103,7 +103,8 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
                 .Where(s => s.WeekId == score.WeekId)
                 .Where(s => s.Verified)
                 .GroupBy(s => s.UserId)
-                .Select(g => g.OrderBy(s => s.TimeMs).First()).ToList()
+                .Select(g => g.OrderBy(s => s.TimeMs).First()).AsEnumerable()
+                .OrderBy(s => s.TimeMs).ToList()
                 .IndexOf(score) + 1);
 
             string placeStr = place.ToString();
