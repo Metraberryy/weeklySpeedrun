@@ -42,7 +42,11 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
         }
         
         WeekEntity? week = await _dbContext.Weeks.FindAsync(id);
-        if (week == null) await RespondAsync("That week doesn't exist!");
+        if (week == null)
+        {
+            await RespondAsync("That week doesn't exist!", ephemeral: true);
+            return;
+        }
 
         if (await _weekEnder.TryEndWeek(week!))
         {
@@ -52,6 +56,26 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
         {
             await RespondAsync("Failed to end week (pending submissions)", ephemeral: true);
         }
+    }
+    
+    [SlashCommand("unend", "oops")]
+    public async Task UnEndWeek(ulong id)
+    {
+        if (await PermissionsFail())
+        {
+            return;
+        }
+        
+        WeekEntity? week = await _dbContext.Weeks.FindAsync(id);
+        if (week == null)
+        {
+            await RespondAsync("That week doesn't exist!", ephemeral: true);
+            return;
+        }
+
+        week.Ended = false;
+        await _dbContext.SaveChangesAsync();
+        await RespondAsync("Success!", ephemeral: true);
     }
     
     [SlashCommand("new", "Create a new week and add it to the queue")]

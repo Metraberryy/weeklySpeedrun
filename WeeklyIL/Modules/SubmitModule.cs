@@ -42,7 +42,8 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        if (!we.Ended && we.StartTimestamp < _dbContext.Weeks.AsEnumerable()
+        if (!we.Ended && we.StartTimestamp < _dbContext.Weeks
+                .Where(w => w.GuildId == Context.Guild.Id).AsEnumerable()
                 .Where(w => w.StartTimestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
                 .OrderBy(w => w.StartTimestamp).Last().StartTimestamp)
         {
