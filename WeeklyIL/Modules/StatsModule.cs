@@ -19,7 +19,6 @@ public class StatsModule : InteractionModuleBase<SocketInteractionContext>
     }
     
     [SlashCommand("stats", "Get stats for a user")]
-    [RequireUserPermission(GuildPermission.ManageChannels)]
     public async Task GetStats(SocketGuildUser? user = null)
     {
         user ??= _client.GetGuild(Context.Guild.Id).GetUser(Context.User.Id);
@@ -48,4 +47,6 @@ public class StatsModule : InteractionModuleBase<SocketInteractionContext>
 
         await RespondAsync(embed: eb.Build());
     }
+    
+    
 }

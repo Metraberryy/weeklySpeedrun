@@ -79,7 +79,8 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
         await _dbContext.SaveChangesAsync();
 
         // try to end the week if its waiting for verifications
-        if (!week.Ended && week.StartTimestamp < _dbContext.Weeks.AsEnumerable()
+        if (!week.Ended && week.StartTimestamp < _dbContext.Weeks
+                .Where(w => w.GuildId == Context.Guild.Id).AsEnumerable()
                 .Where(w => w.StartTimestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
                 .OrderBy(w => w.StartTimestamp).Last().StartTimestamp) await _weekEnder.TryEndWeek(week);
         
@@ -156,7 +157,8 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
         await _dbContext.SaveChangesAsync();
         
         // try to end the week if its waiting for verifications
-        if (!week.Ended && week.StartTimestamp < _dbContext.Weeks.AsEnumerable()
+        if (!week.Ended && week.StartTimestamp < _dbContext.Weeks
+                .Where(w => w.GuildId == Context.Guild.Id).AsEnumerable()
                 .Where(w => w.StartTimestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
                 .OrderBy(w => w.StartTimestamp).Last().StartTimestamp) await _weekEnder.TryEndWeek(week);
 
