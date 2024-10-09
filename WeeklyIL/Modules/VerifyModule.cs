@@ -83,16 +83,15 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
                 .Where(w => w.GuildId == Context.Guild.Id).AsEnumerable()
                 .Where(w => w.StartTimestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
                 .OrderBy(w => w.StartTimestamp).Last().StartTimestamp) await _weekEnder.TryEndWeek(week);
-        
+
         try
         {
-            var channel = 
+            var channel =
                 (SocketTextChannel)await _client.GetChannelAsync(
                     _dbContext.Guild(Context.Guild.Id).AnnouncementsChannel);
-            
-            string mention = (await _client.GetUserAsync(score.UserId)).Mention;
+
             var ts = new TimeSpan((long)score.TimeMs * TimeSpan.TicksPerMillisecond);
-            
+
             string level = week.Level;
             Uri? uri = level.GetUriFromString();
             if (uri != null)
@@ -124,15 +123,23 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
                 };
             }
 
-            if (place != 0) await channel.SendMessageAsync($@"{mention} got a {placeStr} place PB with a time of `{ts:mm\:ss\.fff}` on {level} !");
-            
+            await Context.Guild.DownloadUsersAsync();
             SocketGuildUser? user = Context.Guild.GetUser(score.UserId);
+            
+            if (place != 0)
+                await channel.SendMessageAsync(
+                    $@"{user.Mention} got a {placeStr} place PB with a time of `{ts:mm\:ss\.fff}` on {level} !");
+
             await user.AddRolesAsync(_dbContext.Guilds
                 .Include(g => g.GameRoles)
                 .First(g => g.Id == week.GuildId).GameRoles
                 .Where(r => r.Game == week.Game)
                 .Select(r => r.RoleId));
-        } catch (Exception _) { /* ignored */ }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
 
         await (await Context.Channel.GetMessageAsync(modal.MessageId)).DeleteAsync();
         await DeferAsync();

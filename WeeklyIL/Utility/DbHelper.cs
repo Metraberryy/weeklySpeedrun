@@ -49,6 +49,12 @@ public static class DbHelper
             .Where(w => w.StartTimestamp > DateTimeOffset.UtcNow.ToUnixTimeSeconds())
             .OrderBy(w => w.StartTimestamp).FirstOrDefault();
     
+    public static MonthEntity? CurrentMonth(this WilDbContext dbContext, ulong guild)
+    {
+        ulong? cw = CurrentWeek(dbContext, guild)?.MonthId;
+        return cw == null ? null : Month(dbContext, (ulong)cw);
+    }
+
     public static async Task<bool> UserIsOrganizer(this WilDbContext dbContext, SocketInteractionContext context)
     {
         await dbContext.CreateGuildIfNotExists(context.Guild.Id);

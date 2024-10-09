@@ -33,6 +33,25 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
         return true;
     }
     
+    [SlashCommand("queue", "Shows the queue of upcoming weeks")]
+    public async Task WeeksQueue()
+    {
+        if (await PermissionsFail())
+        {
+            return;
+        }
+
+        var eb = new EmbedBuilder().WithTitle("Upcoming weeks");
+        foreach (WeekEntity week in _dbContext.Weeks
+                     .Where(w => w.GuildId == Context.Guild.Id).AsEnumerable()
+                     .Where(w => w.StartTimestamp > DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                     .OrderBy(w => w.StartTimestamp))
+        {
+            eb.AddField($"<t:{week.StartTimestamp}:D> ID: {week.Id}", week.Level);
+        }
+        await RespondAsync(embed: eb.Build(), ephemeral: true);
+    }
+    
     [SlashCommand("new", "Create a new week and add it to the queue")]
     public async Task NewWeek()
     {
