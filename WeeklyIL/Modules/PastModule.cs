@@ -25,7 +25,7 @@ public class PastModule : InteractionModuleBase<SocketInteractionContext>
         WeekEntity? we = _dbContext.CurrentWeek(Context.Guild.Id);
         if (we == null)
         {
-            await RespondAsync("nope");
+            await RespondAsync("nope", ephemeral: true);
             return;
         }
         
@@ -46,7 +46,7 @@ public class PastModule : InteractionModuleBase<SocketInteractionContext>
         WeekEntity? we = _dbContext.CurrentWeek(Context.Guild.Id);
         if (we == null)
         {
-            await RespondAsync("nope");
+            await RespondAsync("nope", ephemeral: true);
             return;
         }
         
