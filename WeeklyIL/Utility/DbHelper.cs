@@ -110,7 +110,8 @@ public static class DbHelper
             
             if (score.Video == null)
             {
-                board += $":heavy_multiplication_x: - `??:??.???` - {name}\n";
+                board += $":heavy_multiplication_x: `{place:D2}` - `??:??.???` - {name}\n";
+                place++;
                 continue;
             }
             
@@ -122,7 +123,7 @@ public static class DbHelper
                 _ => ":checkered_flag:"
             };
             var ts = new TimeSpan((long)score.TimeMs! * TimeSpan.TicksPerMillisecond);
-            board += $@" - `{ts:mm\:ss\.fff}` - ";
+            board += $@" `{place:D2}` - `{ts:mm\:ss\.fff}` - ";
             board += forceVideo || week.ShowVideo ? $"[{name}]({score.Video})" : name;
             if (showObsolete) board += $" : {score.Id}";
             board += "\n";
@@ -185,7 +186,7 @@ public static class DbHelper
                 _ => ":checkered_flag:"
             };
             var ts = new TimeSpan(score.TimeMs * TimeSpan.TicksPerMillisecond);
-            board += $@" - `{ts:h\:mm\:ss\.fff}` - {name}";
+            board += $@" `{place:D2}` - `{ts:h\:mm\:ss\.fff}` - {name}";
             place++;
         }
 
