@@ -162,7 +162,7 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
         
         if (week == null)
         {
-            await RespondAsync("Week doesn't exist!");
+            await RespondAsync("Week doesn't exist!", ephemeral: true);
             return;
         }
         

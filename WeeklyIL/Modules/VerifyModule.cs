@@ -128,7 +128,7 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
             
             if (place != 0)
                 await channel.SendMessageAsync(
-                    $@"{user.Mention} got a {placeStr} place PB with a time of `{ts:mm\:ss\.fff}` on {level} !");
+                    $@"{user.Mention} got a [{placeStr} place PB]({score.Video}) with a time of `{ts:mm\:ss\.fff}` on {level}!");
 
             await user.AddRolesAsync(_dbContext.Guilds
                 .Include(g => g.GameRoles)
