@@ -160,6 +160,8 @@ public static class DbHelper
 
         var weeks = dbContext.Weeks.Where(w => w.MonthId == month.Id); // get weeks in month
         
+        client.GetGuild(month.GuildId).DownloadUsersAsync().Wait();
+        
         foreach (var score in weeks
                      .SelectMany(w => dbContext.Scores.Where(s => s.WeekId == w.Id)) // get scores from every week
                      .Where(s => s.Verified) // keep verified runs
@@ -176,7 +178,8 @@ public static class DbHelper
                      })
                      .OrderBy(result => result.TimeMs)) // order by time
         {
-            string name = client.GetUser(score.UserId).Username;
+            SocketUser? u = client.GetUser(score.UserId);
+            string name = u == null ? "unknown" : u.Username;
             
             board += place switch
             {

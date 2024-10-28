@@ -51,7 +51,6 @@ public class MonthModule : InteractionModuleBase<SocketInteractionContext>
     }
 
     [SlashCommand("include", "Adds a week to the month")]
-    [RequireUserPermission(GuildPermission.ManageRoles)]
     public async Task IncludeWeek(ulong weekId, ulong monthId)
     {
         await _dbContext.CreateGuildIfNotExists(Context.Guild.Id);
@@ -62,7 +61,7 @@ public class MonthModule : InteractionModuleBase<SocketInteractionContext>
 
         if (week == null)
         {
-            await RespondAsync("Week doesn't exist!");
+            await RespondAsync("Week doesn't exist!", ephemeral: true);
             return;
         }
 
@@ -72,7 +71,7 @@ public class MonthModule : InteractionModuleBase<SocketInteractionContext>
 
         if (month == null)
         {
-            await RespondAsync("Month doesn't exist!");
+            await RespondAsync("Month doesn't exist!", ephemeral: true);
             return;
         }
 
