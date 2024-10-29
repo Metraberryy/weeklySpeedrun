@@ -189,7 +189,7 @@ public static class DbHelper
                 _ => ":checkered_flag:"
             };
             var ts = new TimeSpan(score.TimeMs * TimeSpan.TicksPerMillisecond);
-            board += $@" `{place:D2}` - `{ts:h\:mm\:ss\.fff}` - {name}";
+            board += $@" `{place:D2}` - `{ts:h\:mm\:ss\.fff}` - {name}"+"\n";
             place++;
         }
 
