@@ -88,7 +88,7 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
         {
             var channel =
                 (SocketTextChannel)await _client.GetChannelAsync(
-                    _dbContext.Guild(Context.Guild.Id).AnnouncementsChannel);
+                    _dbContext.Guild(week.GuildId).AnnouncementsChannel);
 
             var ts = new TimeSpan((long)score.TimeMs * TimeSpan.TicksPerMillisecond);
 
@@ -107,28 +107,32 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
                 .OrderBy(s => s.TimeMs).ToList()
                 .IndexOf(score) + 1);
 
-            string placeStr = place.ToString();
-            if (placeStr.Length > 1 && placeStr[^2] == '1')
-            {
-                placeStr += "th";
-            }
-            else
-            {
-                placeStr += placeStr.Last() switch
-                {
-                    '1' => "st",
-                    '2' => "nd",
-                    '3' => "rd",
-                    _ => "th"
-                };
-            }
 
             await Context.Guild.DownloadUsersAsync();
             SocketGuildUser? user = Context.Guild.GetUser(score.UserId);
-            
-            if (place != 0)
-                await channel.SendMessageAsync(
-                    $@"{user.Mention} got a [{placeStr} place PB]({score.Video}) with a time of `{ts:mm\:ss\.fff}` on {level}!");
+
+            if (place != 0) // is pb
+            {
+                string placeStr = place.ToString();
+                if (placeStr.Length > 1 && placeStr[^2] == '1')
+                {
+                    placeStr += "th";
+                }
+                else
+                {
+                    placeStr += placeStr.Last() switch
+                    {
+                        '1' => "st",
+                        '2' => "nd",
+                        '3' => "rd",
+                        _ => "th"
+                    };
+                }
+                bool isCurrent = week.Id == _dbContext.CurrentWeek(week.GuildId)?.Id;
+                placeStr = !isCurrent || week.ShowVideo ? $"[{placeStr} place PB]({score.Video})" : $"{placeStr} place PB";
+                await channel.SendMessageAsync($@"{user.Mention} got a {placeStr} with a time of `{ts:mm\:ss\.fff}` on {level}!");
+            }
+                
 
             await user.AddRolesAsync(_dbContext.Guilds
                 .Include(g => g.GameRoles)
