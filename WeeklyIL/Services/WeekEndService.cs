@@ -27,8 +27,8 @@ public class WeekEndService : IHostedService
     {
         foreach (GuildEntity guild in _dbContext.Guilds)
         {
-            // this was an attempt to go back and end weeks if the bot was down when they were supposed to end
-            // hopefully it wont be an issue anyway
+            // this was a failed attempt to go back and end weeks if the bot was down when they were supposed to end
+            // hopefully it wont be an issue anyway (foreshadowing)
             /*var weeks = _dbContext.Weeks
                 .Where(w => w.GuildId == guild.Id).AsEnumerable()
                 .OrderBy(w => w.StartTimestamp).ToList();

@@ -117,7 +117,7 @@ public class WeekEndTimers
         await channel.SendMessageAsync("Week ended! This is the leaderboard as of now:", embed: eb.Build());
 
         WeekEntity currentWeek = dbContext.CurrentWeek(week.GuildId)!;
-        await channel.SendMessageAsync($"Week started! This week: {week.Level}", embed: eb.Build());
+        await channel.SendMessageAsync($"Week started! This week: {currentWeek.Level}", embed: eb.Build());
 
         ScoreEntity? first = dbContext.Scores
             .Where(s => s.WeekId == week.Id)
@@ -133,10 +133,14 @@ public class WeekEndTimers
         ue.WeeklyWins++;
 
         SocketGuildUser? user = guild.GetUser(first.UserId);
-        await user.AddRolesAsync(dbContext.Guilds
+        var weeklyRoles = dbContext.Guilds
             .Include(g => g.WeeklyRoles)
-            .First(g => g.Id == week.GuildId).WeeklyRoles
-            .Where(r => r.Requirement <= ue.WeeklyWins)
+            .First(g => g.Id == week.GuildId).WeeklyRoles;
+        await user.AddRolesAsync(weeklyRoles
+            .Where(r => r.Requirement == ue.WeeklyWins)
+            .Select(r => r.RoleId));
+        await user.RemoveRolesAsync(weeklyRoles
+            .Where(r => r.Requirement < ue.WeeklyWins)
             .Select(r => r.RoleId));
 
         await dbContext.SaveChangesAsync();
@@ -147,11 +151,11 @@ public class WeekEndTimers
 
         var monthFirst = weeks
             .SelectMany(w => dbContext.Scores.Where(s => s.WeekId == w.Id)) // get scores from every week
-            .Where(s => s.Verified) // keep verified runs
             .Where(s => s.Video != null) // keep scores with video
+            .Where(s => s.Verified) // keep verified runs
             .GroupBy(s => s.UserId).AsEnumerable() // group scores by user id
-            .Where(g => g.Select(s => s.WeekId).Distinct().Count() ==
-                        weeks.Count()) // keep runs from users who have a video on each week
+            .Where(g => 
+                g.Select(s => s.WeekId).Distinct().Count() == weeks.Count()) // keep runs from users who have a video on each week
             .Select(g => new
             {
                 UserId = g.Key,
