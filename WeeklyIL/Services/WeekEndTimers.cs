@@ -117,7 +117,7 @@ public class WeekEndTimers
         await channel.SendMessageAsync("Week ended! This is the leaderboard as of now:", embed: eb.Build());
 
         WeekEntity currentWeek = dbContext.CurrentWeek(week.GuildId)!;
-        await channel.SendMessageAsync($"Week started! This week: {currentWeek.Level}", embed: eb.Build());
+        await channel.SendMessageAsync($"Week started! This week: {currentWeek.Level}");
 
         ScoreEntity? first = dbContext.Scores
             .Where(s => s.WeekId == week.Id)

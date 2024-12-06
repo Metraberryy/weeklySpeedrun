@@ -5,6 +5,7 @@ using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
 using WeeklyIL.Database;
 using WeeklyIL.Services;
+using WeeklyIL.Types;
 using WeeklyIL.Utility;
 
 namespace WeeklyIL.Modules;
@@ -28,12 +29,6 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
         
         [ModalTextInput("time")]
         public string Time { get; set; }
-        
-        [ModalTextInput("run_id")]
-        public ulong RunId { get; set; }
-        
-        [ModalTextInput("message_id")]
-        public ulong MessageId { get; set; }
     }
     
     public class RejectModal : IModal
@@ -42,12 +37,6 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
         
         [ModalTextInput("reason")]
         public string Reason { get; set; }
-        
-        [ModalTextInput("run_id")]
-        public ulong RunId { get; set; }
-        
-        [ModalTextInput("message_id")]
-        public ulong MessageId { get; set; }
     }
     
     [ModalInteraction("verify_run", true)]
@@ -62,7 +51,9 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        ScoreEntity? score = _dbContext.Scores.FirstOrDefault(s => s.Id == modal.RunId);
+        var context = VerifyComponentInteractions.Interactions[Context.Interaction.User.Id];
+
+        ScoreEntity? score = _dbContext.Scores.FirstOrDefault(s => s.Id == context.ScoreId);
         if (score == null) return;
 
         if (score.Verified)
@@ -73,12 +64,16 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
         
         WeekEntity week = _dbContext.Week(score.WeekId);
         if (week.GuildId != Context.Guild.Id) return;
-
+        
+        // update the score
         score.TimeMs = (uint)time.TotalMilliseconds;
         score.Verified = true;
         await _dbContext.SaveChangesAsync();
 
-        // try to end the week if its waiting for verifications
+        // let discord know the interaction went through
+        await DeferAsync();
+        
+        // try to end the week if it's waiting for verifications
         if (!week.Ended && week.StartTimestamp < _dbContext.Weeks
                 .Where(w => w.GuildId == Context.Guild.Id).AsEnumerable()
                 .Where(w => w.StartTimestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
@@ -145,70 +140,44 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
             Console.WriteLine(e);
         }
 
-        await (await Context.Channel.GetMessageAsync(modal.MessageId)).DeleteAsync();
-        await DeferAsync();
+        await (await Context.Channel.GetMessageAsync(context.MessageId)).DeleteAsync();
     }
     
     [ModalInteraction("reject_run", true)]
     public async Task RejectRun(RejectModal modal)
     {
-        ScoreEntity? score = _dbContext.Scores.FirstOrDefault(s => s.Id == modal.RunId);
+        var context = VerifyComponentInteractions.Interactions[Context.Interaction.User.Id];
+        
+        ScoreEntity? score = _dbContext.Scores.FirstOrDefault(s => s.Id == context.ScoreId);
         if (score == null) return;
         
         WeekEntity week = _dbContext.Week(score.WeekId);
         if (week.GuildId != Context.Guild.Id) return;
 
+        // delete the score
+        _dbContext.Remove(score);
+        await _dbContext.SaveChangesAsync();
+        
+        // let discord know the interaction went through
+        await DeferAsync();
+        
         try
         {
             await (await _client.GetUserAsync(score.UserId)).SendMessageAsync(
                 $"Your run ({score.Video}) has been rejected. \nReason: {modal.Reason}");
         } catch (Exception _) { /* ignored */ }
         
-        _dbContext.Remove(score);
-        await _dbContext.SaveChangesAsync();
         
-        // try to end the week if its waiting for verifications
+        // try to end the week if it's waiting for verifications
         if (!week.Ended && week.StartTimestamp < _dbContext.Weeks
                 .Where(w => w.GuildId == Context.Guild.Id).AsEnumerable()
                 .Where(w => w.StartTimestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
-                .OrderBy(w => w.StartTimestamp).Last().StartTimestamp) await _weekEnder.TryEndWeek(week);
-
-        await (await Context.Channel.GetMessageAsync(modal.MessageId)).DeleteAsync();
-        await DeferAsync();
-    }
-}
-
-public class VerifyComponentInteractions : InteractionModuleBase<SocketInteractionContext<SocketMessageComponent>>
-{
-    [ComponentInteraction("verify_button", true)]
-    public async Task VerifyButton()
-    {
-        string id = Context.Interaction.Message.Content.Split(' ')[1];
+                .OrderByDescending(w => w.StartTimestamp).First().StartTimestamp) await _weekEnder.TryEndWeek(week);
         
-        // using a modalbuilder here to automatically set the run id
-        var mb = new ModalBuilder()
-            .WithCustomId("verify_run")
-            .WithTitle("Verify run")
-            .AddTextInput("Time", "time", placeholder: "mm:ss.fff")
-            .AddTextInput("do not edit", "run_id", value: id)
-            .AddTextInput("do not edit", "message_id", value: Context.Interaction.Message.Id.ToString());
+        // delete the submission message
+        await (await Context.Channel.GetMessageAsync(context.MessageId)).DeleteAsync();
 
-        await Context.Interaction.RespondWithModalAsync(mb.Build());
-    }
-    
-    [ComponentInteraction("reject_button", true)]
-    public async Task RejectButton()
-    {
-        string id = Context.Interaction.Message.Content.Split(' ')[1];
-        
-        // using a modalbuilder here to automatically set the run id
-        var mb = new ModalBuilder()
-            .WithCustomId("reject_run")
-            .WithTitle("Reject run")
-            .AddTextInput("Reason", "reason", placeholder: "a very good reason to reject the run")
-            .AddTextInput("do not edit", "run_id", value: id)
-            .AddTextInput("do not edit", "message_id", value: Context.Interaction.Message.Id.ToString());
-
-        await Context.Interaction.RespondWithModalAsync(mb.Build());
+        // clear the interaction context
+        VerifyComponentInteractions.Interactions.Remove(Context.Interaction.User.Id);
     }
 }

@@ -51,7 +51,7 @@ public class InteractionHandlingService : IHostedService
     {
         if (interaction.IsDMInteraction)
         {
-            await interaction.RespondAsync("nuh uh");
+            await interaction.RespondAsync("This interaction only works in a server.");
             return;
         }
         try

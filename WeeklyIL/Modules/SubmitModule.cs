@@ -58,25 +58,20 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
         
-        await _dbContext.Scores.AddAsync(new ScoreEntity
+        var score = await _dbContext.Scores.AddAsync(new ScoreEntity
         {
             UserId = Context.User.Id,
             WeekId = (ulong)weekId,
             Video = video
         });
         await _dbContext.SaveChangesAsync();
-        
-        ulong id = _dbContext.Scores
-            .Where(s => s.UserId == Context.User.Id)
-            .Where(s => s.WeekId == weekId)
-            .First(s => s.Video == video).Id;
 
         var cb = new ComponentBuilder()
             .WithButton("Verify", "verify_button", ButtonStyle.Success)
             .WithButton("Reject", "reject_button", ButtonStyle.Danger);
 
         var channel = (SocketTextChannel)await _client.GetChannelAsync(subChannel);
-        await channel.SendMessageAsync($"ID: {id} | User: {Context.User.Username} | Week: {weekId} \nVideo: {video}", components: cb.Build());
+        await channel.SendMessageAsync($"ID: {score.Entity.Id} | User: {Context.User.Username} | Week: {we.Level} \nVideo: {video}", components: cb.Build());
         
         await RespondAsync("Video submitted! It will be timed and verified soon.", ephemeral: true);
     }
