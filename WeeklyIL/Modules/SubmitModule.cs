@@ -71,7 +71,15 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
             .WithButton("Reject", "reject_button", ButtonStyle.Danger);
 
         var channel = (SocketTextChannel)await _client.GetChannelAsync(subChannel);
-        await channel.SendMessageAsync($"ID: {score.Entity.Id} | User: {Context.User.Username} | Week: {we.Level} \nVideo: {video}", components: cb.Build());
+
+        string level = we.Level;
+        Uri? uri = level.GetUriFromString();
+        if (uri != null)
+        {
+            level = level.Replace(uri.OriginalString, $"<{uri.OriginalString}>");
+        }
+        
+        await channel.SendMessageAsync($"ID: {score.Entity.Id} | User: {Context.User.Username} | Week: {level} \nVideo: {video}", components: cb.Build());
         
         await RespondAsync("Video submitted! It will be timed and verified soon.", ephemeral: true);
     }
