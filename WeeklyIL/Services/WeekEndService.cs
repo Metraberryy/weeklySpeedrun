@@ -5,31 +5,22 @@ using WeeklyIL.Database;
 
 namespace WeeklyIL.Services;
 
-public class WeekEndService : IHostedService
+public class WeekEndService(IDbContextFactory<WilDbContext> contextFactory, WeekEndTimers timers, DiscordSocketClient client) : IHostedService
 {
-    private readonly WilDbContext _dbContext;
-    private readonly WeekEndTimers _timers;
-
-    public WeekEndService(IDbContextFactory<WilDbContext> contextFactory, WeekEndTimers timers, DiscordSocketClient client)
-    {
-        _dbContext = contextFactory.CreateDbContext();
-        _timers = timers;
-
-        client.Ready += Ready;
-    }
-    
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        // yeah man
+        client.Ready += Ready;
     }
 
     private async Task Ready()
     {
-        foreach (GuildEntity guild in _dbContext.Guilds)
+        var context = await contextFactory.CreateDbContextAsync();
+        foreach (GuildEntity guild in context.Guilds)
         {
             // this was a failed attempt to go back and end weeks if the bot was down when they were supposed to end
-            // hopefully it wont be an issue anyway (foreshadowing)
-            /*var weeks = _dbContext.Weeks
+            // hopefully it won't be an issue anyway (foreshadowing)
+            
+            /*var weeks = context.Weeks
                 .Where(w => w.GuildId == guild.Id).AsEnumerable()
                 .OrderBy(w => w.StartTimestamp).ToList();
             for (int i = 0; i < weeks.Count - 1; i++)
@@ -41,15 +32,15 @@ public class WeekEndService : IHostedService
 
                 if (nextWeek.StartTimestamp <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
                 {
-                    await _timers.TryEndWeek(week);
+                    await timers.TryEndWeek(week);
                 }
             }*/
-            await _timers.UpdateGuildTimer(guild.Id);
+            await timers.UpdateGuildTimer(guild.Id);
         }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        await _timers.DisposeAsync();
+        await timers.DisposeAsync();
     }
 }

@@ -136,12 +136,11 @@ public class WeekEndTimers
         var weeklyRoles = dbContext.Guilds
             .Include(g => g.WeeklyRoles)
             .First(g => g.Id == week.GuildId).WeeklyRoles;
-        await user.AddRolesAsync(weeklyRoles
-            .Where(r => r.Requirement == ue.WeeklyWins)
-            .Select(r => r.RoleId));
-        await user.RemoveRolesAsync(weeklyRoles
-            .Where(r => r.Requirement < ue.WeeklyWins)
-            .Select(r => r.RoleId));
+        await user.RemoveRolesAsync(weeklyRoles.Select(r => r.RoleId));
+        await user.AddRoleAsync(weeklyRoles
+            .Where(r => r.Requirement <= ue.WeeklyWins)
+            .OrderByDescending(r => r.Requirement)
+            .First().RoleId);
 
         await dbContext.SaveChangesAsync();
 
