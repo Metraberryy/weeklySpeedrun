@@ -54,8 +54,18 @@ public class ViewModule : InteractionModuleBase<SocketInteractionContext>
                 .FirstOrDefault();
         }
         EmbedBuilder eb = _dbContext.LeaderboardBuilder(_client, week, nw, showVideo);
+        SelectMenuBuilder sb = new SelectMenuBuilder()
+            .WithPlaceholder("Select a week")
+            .WithCustomId("view-week");
+        foreach (WeekEntity w in _dbContext.Weeks.Where(w => w.GuildId == Context.Guild.Id).AsEnumerable()
+                     .Where(w => w.StartTimestamp <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                     .OrderByDescending(w => w.Id))
+        {
+            sb.AddOption(w.Level, w.Id.ToString(), $"ID: {w.Id}");
+        }
+        ComponentBuilder cb = ComponentBuilder.FromComponents([sb.Build()]);
         
-        await RespondAsync(embed: eb.Build(), ephemeral: secret);
+        await RespondAsync(embed: eb.Build(), components: cb.Build(), ephemeral: secret);
     }
     
     [SlashCommand("month", "Shows the leaderboard for a month")]

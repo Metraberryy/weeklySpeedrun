@@ -114,6 +114,8 @@ public class RoleModule : InteractionModuleBase<SocketInteractionContext>
             await RespondAsync($"Role is missing!", ephemeral: true);
             return;
         }
+
+        game = game.ToLowerInvariant();
         
         GuildEntity guild = _dbContext.Guilds
             .Include(g => g.GameRoles)

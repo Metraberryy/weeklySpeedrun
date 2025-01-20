@@ -120,6 +120,7 @@ public class WeekModule : InteractionModuleBase<SocketInteractionContext>
     [ModalInteraction("new_week", true)]
     public async Task NewWeekResponse(NewWeekModal modal)
     {
+        modal.Game = modal.Game.ToLowerInvariant();
         if (_dbContext.Guilds.Include(g => g.GameRoles)
             .First(g => g.Id == Context.Guild.Id)
             .GameRoles.All(r => r.Game != modal.Game)) return;
