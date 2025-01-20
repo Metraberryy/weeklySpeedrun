@@ -123,7 +123,8 @@ public static class DbHelper
                 _ => ":checkered_flag:"
             };
             var ts = new TimeSpan((long)score.TimeMs! * TimeSpan.TicksPerMillisecond);
-            board += $@" `{place:D2}` - `{ts:mm\:ss\.fff}` - ";
+            string timeStr = ts.Hours == 0 ? $@"{ts:mm\:ss\.fff}" : $@"{ts:hh\:mm\:ss}.";
+            board += $@" `{place:D2}` - `{timeStr}` - ";
             board += forceVideo || week.ShowVideo ? $"[{name}]({score.Video})" : name;
             if (showObsolete) board += $" : {score.Id}";
             board += "\n";

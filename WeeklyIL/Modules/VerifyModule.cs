@@ -42,13 +42,16 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
     [ModalInteraction("verify_run", true)]
     public async Task VerifyRun(VerifyModal modal)
     {
-        bool cont = TimeSpan.TryParseExact(
-            modal.Time, @"m\:ss\.fff", CultureInfo.InvariantCulture,
-            out TimeSpan time);
-
-        if (!cont)
+        if (!TimeSpan.TryParseExact(
+                modal.Time, @"m\:ss\.fff", CultureInfo.InvariantCulture,
+                out TimeSpan time))
         {
-            return;
+            if (!TimeSpan.TryParseExact(
+                    modal.Time, @"h\:mm\:ss\.fff", CultureInfo.InvariantCulture,
+                    out time))
+            {
+                return;
+            }
         }
 
         var context = VerifyComponentInteractions.Interactions[Context.Interaction.User.Id];
@@ -125,7 +128,8 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
                 }
                 bool isCurrent = week.Id == _dbContext.CurrentWeek(week.GuildId)?.Id;
                 placeStr = !isCurrent || week.ShowVideo ? $"[{placeStr} place PB]({score.Video})" : $"{placeStr} place PB";
-                await channel.SendMessageAsync($@"{user.Mention} got a {placeStr} with a time of `{ts:mm\:ss\.fff}` on {level}!");
+                string timeStr = ts.Hours == 0 ? $@"{ts:mm\:ss\.fff}" : $@"{ts:hh\:mm\:ss}";
+                await channel.SendMessageAsync($@"{user.Mention} got a {placeStr} with a time of `{timeStr}` on {level}!");
             }
                 
 
@@ -165,7 +169,7 @@ public class VerifyModule : InteractionModuleBase<SocketInteractionContext>
         {
             await (await _client.GetUserAsync(score.UserId)).SendMessageAsync(
                 $"Your run ({score.Video}) has been rejected. \nReason: {modal.Reason}");
-        } catch (Exception _) { /* ignored */ }
+        } catch (Exception) { /* ignored */ }
         
         
         // try to end the week if it's waiting for verifications

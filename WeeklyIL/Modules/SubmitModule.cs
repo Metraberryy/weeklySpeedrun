@@ -79,7 +79,7 @@ public class SubmitModule : InteractionModuleBase<SocketInteractionContext>
             level = level.Replace(uri.OriginalString, $"<{uri.OriginalString}>");
         }
         
-        await channel.SendMessageAsync($"ID: {score.Entity.Id} | User: {Context.User.Username} | Week: {level} \nVideo: {video}", components: cb.Build());
+        await channel.SendMessageAsync($"ID: {score.Entity.Id} | User: {Context.User.Username} | Week: {level}\n\nVideo: {video}", components: cb.Build());
         
         await RespondAsync("Video submitted! It will be timed and verified soon.", ephemeral: true);
     }
